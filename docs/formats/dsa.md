@@ -124,7 +124,14 @@ game gives a character by state. Ids 10000-10006 are the neutral face
 (parts 0, 1, 5, 15) with the seven hand pairings — 10000 both fists,
 10005 both open, 10006 both gripping; 11000-11006 the same with the damage
 mouth (part 6), 12000-12002 with the damage face (part 2); 20000-21006
-repeat the pairings with the grip hands 10 and 11; 19000 hides everything.
+repeat the pairings with the grip hands 10 and 11; 19000 hides everything;
+30000-31006 are seven more hand pairings, with and without the damage
+mouth. 32000-32014 are fifteen one-off looks that also light parts 3, 4,
+9-11 and 13 and groups 12-15: character-specific expressions, and the
+table does not say whose. Applied to the wrong model they stack faces —
+32002 lights parts 1, 8 and 10, and Frieza's part 10 is a whole face and
+mouth (`F_10_mikudashi`, `M_10_laugh`) that its own action set only ever
+shows alone.
 The viewer rests a fighter on preset 10005, the look the title and
 character-select screens also draw (their own masks, `0x8123033F` in the
 title code and `0x8023F33F` at `0x0213b680` in overlay 2, share its face and
