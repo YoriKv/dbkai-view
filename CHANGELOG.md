@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.1 - unreleased
+## v0.1.1 - 2026-09-10
 
 - Initial release
 - Opens a DB Kai: Ultimate Butoden ROM and browses its models in an OpenGL

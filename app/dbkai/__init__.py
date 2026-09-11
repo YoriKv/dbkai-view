@@ -10,7 +10,7 @@ is testable and reusable headless.
   frozen release build.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # The name shown to a person: window titles, dialogs, the About box, and
 # QApplication.applicationDisplayName.
