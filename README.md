@@ -1,48 +1,67 @@
 # DBKai
 
-A model extractor and viewer for **DB Kai: Ultimate Butoden**.
+**DBKai** is a model viewer and extractor for **Dragon Ball Kai: Ultimate
+Butoden** (Nintendo DS). It opens your own copy of the ROM, shows the game's 3D
+models with their textures, parts and animations, and exports them to glTF 2.0.
 
-Built on Python + Qt (PySide6); runs on Windows, macOS and Linux.
+DBKai is built on Python + Qt (PySide6) and runs on Windows, macOS and Linux.
 
-## Running
+## Features
+
+- **Asset browser** - every model in the ROM, including the ones embedded in
+  story packages, as a filterable tree.
+- **Viewport** - OpenGL rendering with the game's culling and transparency
+  rules, posed and animated by the model's motion set, with a grid and bone
+  overlay.
+- **Parts** - switch the faces, hands and costume pieces the game layers on one
+  model.
+- **Animation** - pick a clip, then scrub through it or play it.
+- **Materials & skeleton** - texture previews with palette choice, and the bone
+  hierarchy.
+- **Export** - glTF 2.0 with skeleton, textures and animation clips: the current
+  clip, all clips in one file, or one file per clip. Textures export as PNG, and
+  Extract Everything writes out the whole ROM at once.
+
+## Getting Started
+
+### Install
+
+Grab the build for your platform from the
+[Releases page](https://github.com/YoriKv/dbkai-viewer/releases), unpack and
+run, no installer. The macOS builds need macOS 13 or later.
+
+### First steps
+
+1. **Open the ROM** - File -> Open ROM (`Ctrl+O`). You need your own dump of the
+   game; none is included. The last ROM reopens on the next start.
+2. **Pick a model** - browse or filter the Assets dock.
+3. **Look it over** - switch parts, clips and palettes in the side panels. The
+   View menu toggles textures, wireframe, the grid and the skeleton, and
+   `Home` resets the camera.
+4. **Export** - File -> Export glTF (`Ctrl+E`) for the current clip, or one of
+   the other export entries for all clips, textures or everything.
+
+### From source
 
 ```bash
-uv run dbkai [ROM.nds]       # the viewer; or: uv run python -m dbkai
-uv run python -m dbkai.cli list ROM.nds              # what is inside
-uv run python -m dbkai.cli extract ROM.nds out/ --motion --per-clip   # everything as glTF + PNG
-uv run pytest                # the tests force Qt's offscreen platform
+uv run dbkai [ROM.nds]                  # the viewer
+uv run python -m dbkai.cli --help       # list / extract / export without the UI
 ```
 
-Open a ROM, pick a model in the Assets dock, and the viewport shows it posed
-by its body type's motion set. The Parts tab switches the faces, hands and
-costume pieces the game layers on one model; File > Export writes glTF 2.0
-with skeleton, textures and animation clips.
+## Thank You
 
-On WSL, `uv` must target `.venv-linux` — see
-[`docs/development.md`](docs/development.md).
+Thanks to the following projects, which made working out the game's formats
+possible:
 
-## What is here
+- **[melonDS](https://github.com/melonDS-emu/melonDS)**
+- **[ds-decomp](https://github.com/AetiasHax/ds-decomp)**
 
-```
-app/
-├── dbkai/
-│   ├── app.py        QApplication bootstrap; with ui/, the only Qt importer
-│   ├── cli.py        list / extract / export from the command line
-│   ├── game.py       a ROM's assets catalogued, with their relations
-│   ├── nds/          the cartridge image and its NitroFS
-│   ├── formats/      decoders: archive, DSE, geometry commands, textures, compression
-│   ├── model/        skeleton, animation, render-ready meshes (numpy, no Qt)
-│   ├── export/       glTF 2.0 and PNG writers
-│   ├── resources/    bundled read-only assets
-│   └── ui/           everything Qt: session, viewport, panels, main window
-└── tests/            synthetic fixtures; no game data
-```
+## AI Use Disclaimer
 
-The file formats are documented under [`docs/formats/`](docs/formats/).
-
-Game data is never part of this repository: supply your own dump.
+This tool was created with the help of an AI coding agent. All of the code is AI
+generated, but the design and other aspects of this project are my own.
 
 ## Licence
 
 MIT, with the full text in [`LICENSE`](LICENSE). Qt is used through PySide6
-under the LGPLv3.
+under the LGPLv3. No game data is included or distributed.

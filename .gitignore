@@ -7,9 +7,20 @@ dist/
 # extractor derives from it is copyrighted and fully regenerable.
 reference/
 extracted/
+*.nds
+*.srl
+*.dsa
+*.dse
 *.3ds
 *.cia
 *.cxi
+# Emulator saves and savestates
+*.sav
+*.dsv
+*.mln
+# What the extractor writes
+*.gltf
+*.glb
 
 # Scratch space for one-off scripts and diagnostics
 tmp/
@@ -52,3 +63,7 @@ ui_*.py
 !.idea/.gitignore
 .vscode/
 .DS_Store
+
+# Claude Code: project instructions and settings stay local
+CLAUDE.md
+.claude/

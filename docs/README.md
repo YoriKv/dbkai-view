@@ -1,7 +1,6 @@
 # DBKai documentation
 
-`CLAUDE.md` at the repository root is an index of operating rules. This folder
-is where the substance lives.
+This folder holds the project's reference documentation.
 
 This tree is indexed as the **`dbkai` QMD collection**. Search it rather than
 grepping:
@@ -15,7 +14,7 @@ qmd update && qmd embed        # re-index after adding or editing docs
 ## Topic index
 
 - **[`development.md`](development.md)** — working in this checkout: the two
-  venvs, WSL, PyCharm, the tests, lint and format.
+  venvs, WSL, PyCharm, the tests, lint and format, and cutting a release.
 - **[`app/`](app/)** — the viewer's design decisions:
   [`app/viewer.md`](app/viewer.md) for the session, viewport and panels,
   [`app/theme.md`](app/theme.md) for the palette.

@@ -40,9 +40,6 @@ the default `.venv`. Load it explicitly at the top of such a call:
 eval "$(direnv export bash 2>/dev/null)"
 ```
 
-`.claude/settings.json` does exactly that before every `uv`, `qmd`, `pytest`,
-`ruff` or `python` command Claude Code runs.
-
 ## Documentation search (qmd)
 
 `docs/` is indexed as the **`dbkai`** collection of
@@ -115,3 +112,29 @@ uv run ruff format --check .
 ```
 
 Config lives in `pyproject.toml`.
+
+## Releases
+
+Pushing a `vX.Y.Z` tag builds the viewer for Windows, Linux and macOS (Apple
+Silicon and Intel) with PyInstaller and publishes a GitHub Release with the four
+archives — `.github/workflows/release.yml`.
+
+```bash
+./release.sh                     # patch: bump, stamp CHANGELOG.md, commit, tag, push
+./release.sh minor --dry-run     # preview a minor release
+python3 packaging/build.py -a    # the release build, locally, for this OS
+```
+
+- **Write the notes first.** `release.sh` refuses to run unless `CHANGELOG.md`
+  has a `## vX.Y.Z - unreleased` section for the version it is about to cut.
+  That section becomes the release body, and the script stamps its date.
+- **`__version__` in `app/dbkai/__init__.py` is the only version.**
+  `pyproject.toml` reads it; `release.sh` bumps it.
+- **`packaging/build.py` is the whole build recipe**; the workflow only calls
+  it. PyInstaller freezes the interpreter it runs under, so a build targets the
+  OS it runs on. Pillow converts `resources/icons/app.png` into the Windows and
+  macOS icon formats at build time.
+- **A manual run** (*Actions > Release > Run workflow*) builds all four without
+  publishing, which is how to test a build change.
+- **A build contains only the package.** PyInstaller collects `dbkai` and its
+  imports; nothing under `reference/` or `extracted/` is read.
