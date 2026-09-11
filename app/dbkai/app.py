@@ -85,7 +85,7 @@ def _install_screenshot_hook(app: QApplication, window: MainWindow) -> None:
             window.session.set_motion(None)
         action = os.environ.get("DBKAI_ACTION")  # "<action id>" from the loaded files
         if action:
-            for file in window.session.action_files:
+            for file in window.session.action_sets:
                 found = file.action_by_id(int(action))
                 if found is not None:
                     window.session.set_action((file, found))

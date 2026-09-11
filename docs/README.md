@@ -26,7 +26,7 @@ qmd update && qmd embed        # re-index after adding or editing docs
   is `archiveDBK.dsa`, [`formats/dse.md`](formats/dse.md) the model, motion
   and texture container, [`formats/gx.md`](formats/gx.md) the geometry
   commands and fixed-point conventions, [`formats/dsa.md`](formats/dsa.md)
-  the action files and the visibility presets that drive which parts show,
+  the action sets and the visibility presets that drive which parts show,
   and [`formats/compression.md`](formats/compression.md) the three codecs.
 - **[`tools/`](tools/)** — external tools and how this project uses them.
   [`tools/ds-decomp.md`](tools/ds-decomp.md) disassembles the game's code;

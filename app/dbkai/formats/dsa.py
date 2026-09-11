@@ -1,4 +1,4 @@
-"""``DSA`` action files: what a character does frame by frame.
+"""``DSA`` action sets: what a character does frame by frame.
 
 Each ``dsa/<id>_<name>.dsa`` file is a set of **actions** (idle, dash, each
 attack, damage reactions, ...). An action is a duration plus a chain of timed
@@ -25,7 +25,7 @@ _RESOURCE = struct.Struct("<HHiIiI")
 
 
 class DsaError(ValueError):
-    """The bytes are not an action file this parser understands."""
+    """The bytes are not an action set this parser understands."""
 
 
 class Op(IntEnum):
@@ -245,7 +245,7 @@ class Action:
 
 
 @dataclass
-class DsaFile:
+class ActionSet:
     name: str
     actions: list[Action]
     resources: list[Resource]
@@ -293,7 +293,7 @@ def _track(data: bytes, offset: int) -> Track | None:
     return Track(tuple(zip(keys, values, strict=True)), bool(flags & 2), period)
 
 
-def parse(data: bytes, name: str = "") -> DsaFile:
+def parse(data: bytes, name: str = "") -> ActionSet:
     if not is_dsa(data):
         raise DsaError("not a DSA file")
     (
@@ -315,7 +315,7 @@ def parse(data: bytes, name: str = "") -> DsaFile:
     if header_size != _HEADER.size:
         raise DsaError(f"unexpected header size {header_size:#x}")
     if n_records < n_actions or commands_off > len(data):
-        raise DsaError("corrupt action file header")
+        raise DsaError("corrupt action set header")
     t1 = header_size
     table = struct.unpack_from(f"<{n_records}I", data, t1)
     t3 = t1 + 4 * n_records
@@ -407,4 +407,4 @@ def parse(data: bytes, name: str = "") -> DsaFile:
             chain.append(cmd)
             nxt = record(nxt)[6]
         actions.append(Action(a, action_id, dur, tuple(chain)))
-    return DsaFile(name, actions, resources, motion_sets, raw_kind | (flags7 << 8))
+    return ActionSet(name, actions, resources, motion_sets, raw_kind | (flags7 << 8))

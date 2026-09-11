@@ -20,7 +20,7 @@ from dbkai.model.skeleton import LocalPose, Skeleton
 class Clip:
     """A named run of frames in a motion file. ``first`` is the take frame
     number (1-based, as the file records it) of the run's first frame, which
-    is how the action files address frames inside a clip."""
+    is how the action sets address frames inside a clip."""
 
     name: str
     start: int
@@ -127,3 +127,20 @@ class BoundMotion:
     ) -> np.ndarray:
         local = [p.matrix() for p in self.local_poses(frame, rest)]
         return self.skeleton.world_matrices(local)
+
+
+@dataclass(frozen=True)
+class Take:
+    """Frames to export as one animation. ``poses[k]`` is the bound motion
+    and file frame that pose the skeleton in frame *k* (``None``: the bind
+    pose); ``masks[k]``, when given, the draw mask in force."""
+
+    name: str
+    poses: list[tuple[BoundMotion, int] | None]
+    masks: list[int] | None = None
+
+    @classmethod
+    def of_clip(cls, bound: BoundMotion, clip: Clip) -> Take:
+        return cls(
+            clip.name, [(bound, clip.start + k) for k in range(clip.frame_count)]
+        )

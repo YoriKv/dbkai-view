@@ -38,7 +38,7 @@ class AssetKind(Enum):
     MOTION = "motion"
     MOTION_SET = "motion set"
     TEXTURES = "textures"
-    ACTIONS = "actions"
+    ACTION_SET = "action set"
     OTHER = "other"
 
 
@@ -86,6 +86,7 @@ class Asset:
 class GameData:
     def __init__(self, rom: NdsRom) -> None:
         self.rom = rom
+        self._motion_sets: dict[int, Motion | None] = {}
 
     @classmethod
     def open(cls, path: str | Path) -> GameData:
@@ -211,11 +212,20 @@ class GameData:
         return [a for a in self.assets if a.kind is AssetKind.MOTION_SET]
 
     def motion_set_by_id(self, set_id: int) -> Asset | None:
-        """The ``smot/sm_<set id>_*.dse`` asset an action file refers to."""
+        """The ``smot/sm_<set id>_*.dse`` asset an action set refers to."""
         for a in self.motion_sets():
             if a.numeric_id == set_id:
                 return a
         return None
+
+    def motion_set(self, set_id: int) -> Motion | None:
+        """The motion set an action set names by ``set_id``, loaded once."""
+        if set_id not in self._motion_sets:
+            asset = self.motion_set_by_id(set_id)
+            self._motion_sets[set_id] = (
+                None if asset is None else self.load_motion(asset)
+            )
+        return self._motion_sets[set_id]
 
     def motion_set_for(self, asset: Asset) -> Asset | None:
         body = asset.body_type
@@ -226,11 +236,11 @@ class GameData:
                 return a
         return None
 
-    def action_files(self) -> list[Asset]:
-        return [a for a in self.assets if a.kind is AssetKind.ACTIONS]
+    def action_sets(self) -> list[Asset]:
+        return [a for a in self.assets if a.kind is AssetKind.ACTION_SET]
 
-    def action_files_for(self, asset: Asset) -> list[Asset]:
-        """The action files a character model runs on, by id.
+    def action_sets_for(self, asset: Asset) -> list[Asset]:
+        """The action sets a character model runs on, by id.
 
         ``dsa/`` holds one file per body type and fighting style
         (``101000_NORMAL_BALANCE``, ``111000_TALL_POWER``, ...), a few
@@ -242,7 +252,7 @@ class GameData:
         n = asset.numeric_id
         if n is None:
             return []
-        files = self.action_files()
+        files = self.action_sets()
         style = None
         for step in (1000, 10000):
             candidates = [
@@ -268,7 +278,7 @@ class GameData:
         out += [a for a in files if a.numeric_id == n and a not in out]
         return out
 
-    def load_actions(self, asset: Asset) -> dsa.DsaFile:
+    def load_action_set(self, asset: Asset) -> dsa.ActionSet:
         return dsa.parse(self.read(asset), asset.name)
 
     @cached_property
@@ -332,7 +342,7 @@ def _kind_from_name(name: str) -> AssetKind:
             return AssetKind.TEXTURES
         return AssetKind.MODEL
     if lower.endswith(".dsa") and stem[:1].isdigit():
-        return AssetKind.ACTIONS
+        return AssetKind.ACTION_SET
     return AssetKind.OTHER
 
 

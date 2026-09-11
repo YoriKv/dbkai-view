@@ -1,4 +1,4 @@
-# `DSA` action files
+# `DSA` action sets
 
 `dsa/<id>_<name>.dsa`: what a character does, frame by frame — one file per
 body type and fighting style (`101000_NORMAL_BALANCE`, `111000_TALL_POWER`,
@@ -71,7 +71,7 @@ The draw mask is the word the draw routine tests
 bits, material parts in the high 16. `0x8023033F` — groups 0-5, 8, 9; parts
 0, 1, 5, 15 — is the rest look (open hands, neutral face); `0x804300FF`
 swaps in fists and the damage mouth. Actions without a visibility command
-leave the mask as the previous action set it.
+leave the mask as the previous action left it.
 
 A **track** is `u8 flags, u8 count, s16 period, count × u16 values, count ×
 keys` (u8 keys when flags bit 0 is set, else u16); flags bit 1 loops the

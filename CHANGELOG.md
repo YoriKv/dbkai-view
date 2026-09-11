@@ -2,15 +2,16 @@
 
 ## Unreleased
 
-- Actions tab: plays an action from the character's `.dsa` files, driving
+- Actions tab: plays an action from the character's action sets (its
+  `.dsa` files), driving
   the clip, the frame and the part masks from the action's own commands;
   laid out like the Animation tab, with a source chooser and a list, and
-  switching actions keeps playing; action files activated in the Assets
+  switching actions keeps playing; action sets activated in the Assets
   dock join it and can be removed again
 - Fix: the colour scheme an action chose stuck to the palette after leaving
   the action or opening another model; it now reverts, and the Materials
   tab's palette spinner follows it
-- Fix: activating an action file in the Assets dock raised "not a DSE
+- Fix: activating an action set in the Assets dock raised "not a DSE
   file"; it now joins the Actions tab of the loaded model
 - Fix: binding a motion that is not one of the model's own choices (opened
   from disk, or by an action) crashed the Animation tab on the next change

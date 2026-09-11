@@ -119,7 +119,7 @@ def test_actions_panel_lists_and_selects(qtbot):
     from tests.dsa_fixture import build_actions
 
     window = _window(qtbot)
-    window.session.action_files = [dsa.parse(build_actions(), "fixture.dsa")]
+    window.session.action_sets = [dsa.parse(build_actions(), "fixture.dsa")]
     window.session.actions_changed.emit()
     panel = window.actions
     assert panel.source.count() == 1 and panel.source.currentText() == "fixture.dsa"
@@ -140,4 +140,4 @@ def test_actions_panel_lists_and_selects(qtbot):
     # A file set by hand counts as added, so the Remove button takes it out.
     assert panel.remove.isEnabled()
     panel.remove.click()
-    assert window.session.action_files == [] and panel.source.count() == 0
+    assert window.session.action_sets == [] and panel.source.count() == 0

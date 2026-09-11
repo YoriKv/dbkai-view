@@ -190,7 +190,7 @@ The **part** is the second 16-bit visibility mask: 0 always, 1-4 the faces
 (`F_01_nomal`, `F_02_damage`, `F_03_kusen`, `F_04_fun`), 5-8 the mouths
 (`M_05`…`M_08`), 11-13 lip-sync mouths, 14 sweat, 9 and 15 alternative hair
 materials. A mesh is drawn only when both its group bit and its material's
-part bit are set. The masks come from the character's action files
+part bit are set. The masks come from the character's action sets
 ([dsa.md](dsa.md)); on the title screen Goku shows parts 0, 1, 8 and 15 with
 groups 0-5, 8 and 9.
 

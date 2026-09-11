@@ -18,6 +18,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from dbkai.formats import dsa, dse
 from dbkai.game import Asset, AssetKind, GameData, unwrap
 from dbkai.model import scene
+from dbkai.model.action import ActionPose, action_pose
 from dbkai.model.animation import BoundMotion, Clip, Motion
 from dbkai.model.scene import MeshData, Model
 
@@ -79,11 +80,10 @@ class Session(QObject):
         self.frame: int = 0
         self.visibility = Visibility()
         self.options = ViewOptions()
-        #: The action files that apply to the model, and the chosen action.
-        self.action_files: list[dsa.DsaFile] = []
-        self.action: tuple[dsa.DsaFile, dsa.Action] | None = None
+        #: The action sets that apply to the model, and the chosen action.
+        self.action_sets: list[dsa.ActionSet] = []
+        self.action: tuple[dsa.ActionSet, dsa.Action] | None = None
         self.action_frame: int = 0
-        self._motion_sets: dict[int, Motion] = {}
         self._timer = QTimer(self)
         self._timer.setInterval(1000 // FRAMES_PER_SECOND)
         self._timer.timeout.connect(self._tick)
@@ -120,8 +120,8 @@ class Session(QObject):
         if asset.kind in (AssetKind.MOTION, AssetKind.MOTION_SET):
             self.set_motion(self.game.load_motion(asset))
             return
-        if asset.kind is AssetKind.ACTIONS:
-            self.add_action_file(self.game.load_actions(asset))
+        if asset.kind is AssetKind.ACTION_SET:
+            self.add_action_set(self.game.load_action_set(asset))
             return
         file = self.game.load_dse(asset)
         if not file.meshes and file.frame_count:
@@ -140,17 +140,17 @@ class Session(QObject):
         self.bound = None
         self.clip = None
         self.frame = 0
-        self.action_files = []
-        self.own_action_files: set[str] = set()
+        self.action_sets = []
+        self.own_action_sets: set[str] = set()
         self._palette_before_action = 0
         self.set_option("palette", 0)  # an action's colour scheme does not carry over
         self.action = None
         if self.game is not None and asset is not None:
-            for a in self.game.action_files_for(asset):
+            for a in self.game.action_sets_for(asset):
                 try:
-                    self.action_files.append(self.game.load_actions(a))
-                    self.own_action_files.add(self.action_files[-1].name)
-                except Exception:  # noqa: BLE001 - a bad action file must not hide the model
+                    self.action_sets.append(self.game.load_action_set(a))
+                    self.own_action_sets.add(self.action_sets[-1].name)
+                except Exception:  # noqa: BLE001 - a bad action set must not hide the model
                     log.exception("loading %s", a.path)
         self.model_changed.emit()
         self.motion_changed.emit()
@@ -283,12 +283,12 @@ class Session(QObject):
 
     # -- actions --------------------------------------------------------------
 
-    def add_action_file(self, file: dsa.DsaFile) -> None:
-        """Offer an action file's actions for the loaded model, replacing one
+    def add_action_set(self, file: dsa.ActionSet) -> None:
+        """Offer an action set's actions for the loaded model, replacing one
         of the same name. Its motions resolve against the ROM's motion sets,
         so any character can be posed with any file's actions."""
-        self.action_files = [f for f in self.action_files if f.name != file.name]
-        self.action_files.append(file)
+        self.action_sets = [f for f in self.action_sets if f.name != file.name]
+        self.action_sets.append(file)
         if self.action is not None and self.action[0].name == file.name:
             self.set_action(None)
         self.actions_changed.emit()
@@ -297,21 +297,21 @@ class Session(QObject):
         else:
             self.status.emit(f"{file.name}: {len(file.actions)} actions")
 
-    def is_added_action_file(self, name: str) -> bool:
+    def is_added_action_set(self, name: str) -> bool:
         """Whether the file was added by hand rather than found for the
         model, so it can be removed again."""
-        return name not in self.own_action_files
+        return name not in self.own_action_sets
 
-    def remove_action_file(self, name: str) -> None:
-        """Take an added action file out again; the model's own files stay."""
-        if not self.is_added_action_file(name):
+    def remove_action_set(self, name: str) -> None:
+        """Take an added action set out again; the model's own files stay."""
+        if not self.is_added_action_set(name):
             return
         if self.action is not None and self.action[0].name == name:
             self.set_action(None)
-        self.action_files = [f for f in self.action_files if f.name != name]
+        self.action_sets = [f for f in self.action_sets if f.name != name]
         self.actions_changed.emit()
 
-    def set_action(self, choice: tuple[dsa.DsaFile, dsa.Action] | None) -> None:
+    def set_action(self, choice: tuple[dsa.ActionSet, dsa.Action] | None) -> None:
         """Play an action: its motion segments drive the clip and frame, its
         visibility and colour commands the masks, frame by frame of the
         action. ``None`` goes back to free clip scrubbing."""
@@ -360,10 +360,10 @@ class Session(QObject):
             return
         file, action = self.action
         frame = self.action_frame
-        found = action.motion_at(frame)
-        if found is not None:
-            resource, take_frame = found
-            self._pose_from_resource(file, resource, take_frame)
+        if self.game is not None:
+            pose = action_pose(file, action, frame, self.game.motion_set)
+            if pose is not None:
+                self._show_pose(pose)
         mask = action.mask_at(frame)
         if mask is not None:
             groups, parts = self.model.visibility_from_mask(mask)
@@ -375,26 +375,9 @@ class Session(QObject):
             self.set_option("palette", scheme)
         self.frame_changed.emit(self.frame)
 
-    def _pose_from_resource(
-        self, file: dsa.DsaFile, resource: int, take_frame: int
-    ) -> None:
-        """Bind the motion set a resource names and pose its clip's take
-        frame. Embedded resources and unknown sets are left alone."""
-        if not 0 <= resource < len(file.resources) or self.game is None:
-            return
-        res = file.resources[resource]
-        if res.embedded or res.set_id == 0:
-            return
-        motion = self._motion_sets.get(res.set_id)
-        if motion is None:
-            asset = self.game.motion_set_by_id(res.set_id)
-            if asset is None:
-                return
-            motion = self.game.load_motion(asset)
-            self._motion_sets[res.set_id] = motion
-        clip = motion.clip_by_number(res.number)
-        if clip is None:
-            return
+    def _show_pose(self, pose: ActionPose) -> None:
+        """Bind the motion an action frame plays and pose its frame."""
+        motion, clip = pose.motion, pose.clip
         if self.motion is not motion or self.bound is None:
             self.motion = motion
             self.motion_name = motion.name
@@ -406,7 +389,7 @@ class Session(QObject):
         elif self.clip is not clip:
             self.clip = clip
             self.motion_changed.emit()
-        self.frame = clip.frame_for_take(take_frame)
+        self.frame = pose.frame
 
     def action_mask(self) -> int | None:
         """The mask the chosen action sets at the current action frame."""

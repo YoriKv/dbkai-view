@@ -456,16 +456,16 @@ class ActionsPanel(QWidget):
         self.info = QLabel("")
         self.info.setWordWrap(True)
         self.clear = QPushButton("No action")
-        self.remove = QPushButton("Remove file")
+        self.remove = QPushButton("Remove set")
         self.remove.setToolTip(
-            "Take an action file added from the Assets dock out again"
+            "Take an action set added from the Assets dock out again"
         )
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.frame_label = QLabel("–")
         self.play = QPushButton("Play")
         self.play.setCheckable(True)
         form = QFormLayout()
-        form.addRow("Source", self.source)
+        form.addRow("Action set", self.source)
         row = QHBoxLayout()
         row.addWidget(self.play)
         row.addWidget(self.clear)
@@ -498,7 +498,7 @@ class ActionsPanel(QWidget):
     def rebuild(self) -> None:
         """Refill the source list when the files changed; otherwise only
         follow the session's current action."""
-        names = [f.name for f in self.session.action_files]
+        names = [f.name for f in self.session.action_sets]
         presets = self.session.game.visibility_presets if self.session.game else {}
         if presets:
             names.append(_PRESETS)
@@ -545,7 +545,7 @@ class ActionsPanel(QWidget):
                 item.setData(0, _ROLE, ("preset", mask))
                 self.tree.addTopLevelItem(item)
         else:
-            for file in self.session.action_files:
+            for file in self.session.action_sets:
                 if file.name != name:
                     continue
                 for action in file.actions:
@@ -589,13 +589,13 @@ class ActionsPanel(QWidget):
         self.remove.setEnabled(
             isinstance(name, str)
             and name != _PRESETS
-            and self.session.is_added_action_file(name)
+            and self.session.is_added_action_set(name)
         )
 
     def _remove_source(self) -> None:
         name = self.source.currentData()
         if isinstance(name, str) and name != _PRESETS:
-            self.session.remove_action_file(name)
+            self.session.remove_action_set(name)
 
     def _chosen(
         self, item: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
@@ -654,7 +654,7 @@ class ActionsPanel(QWidget):
 _PRESETS = "presets"
 
 
-def _plays(file: dsa.DsaFile, action: dsa.Action) -> str:
+def _plays(file: dsa.ActionSet, action: dsa.Action) -> str:
     """A short description of the clips an action plays."""
     numbers: list[str] = []
     for c in action.motions:

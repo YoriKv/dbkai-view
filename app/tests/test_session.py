@@ -105,7 +105,7 @@ def test_open_file_accepts_models_and_motions(tmp_path, qapp):
 def test_action_drives_visibility(session):
     session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
     file = dsa.parse(build_actions(), "fixture.dsa")
-    session.action_files = [file]
+    session.action_sets = [file]
     session.set_action((file, file.actions[0]))
     # 0x8023033F: groups 0-5, 8, 9 and parts 0, 1, 5, 15 - of which the
     # fixture has groups 0 and 1 and part 0.
@@ -133,8 +133,8 @@ def test_action_playback_drives_clip_and_frame(qapp):
     s = Session()
     s.game = GameData(NdsRom(build_rom()))
     s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
-    assert s.action_files and s.action_files[0].name == "100000_NORMAL_BALANCE.dsa"
-    file = s.action_files[0]
+    assert s.action_sets and s.action_sets[0].name == "100000_NORMAL_BALANCE.dsa"
+    file = s.action_sets[0]
     s.set_action((file, file.actions[0]))
     # The idle action's first segment plays clip number 0 ("000_spin") from
     # take frame 1, which is the clip's first frame.
@@ -159,11 +159,11 @@ def test_action_file_asset_joins_the_action_list(qapp):
     s = Session()
     s.game = GameData(NdsRom(build_rom()))
     s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
-    before = [f.name for f in s.action_files]
+    before = [f.name for f in s.action_sets]
     s.load_asset(s.game.find("/debug/110000_TALL_POWER.dsa"))
-    assert [f.name for f in s.action_files] == before + ["110000_TALL_POWER.dsa"]
+    assert [f.name for f in s.action_sets] == before + ["110000_TALL_POWER.dsa"]
     s.load_asset(s.game.find("/debug/110000_TALL_POWER.dsa"))  # again: replaces
-    assert [f.name for f in s.action_files] == before + ["110000_TALL_POWER.dsa"]
+    assert [f.name for f in s.action_sets] == before + ["110000_TALL_POWER.dsa"]
 
 
 def test_added_action_file_can_be_removed_but_not_the_models_own(qapp):
@@ -173,20 +173,20 @@ def test_added_action_file_can_be_removed_but_not_the_models_own(qapp):
     s = Session()
     s.game = GameData(NdsRom(build_rom()))
     s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
-    own = [f.name for f in s.action_files]
+    own = [f.name for f in s.action_sets]
     s.load_asset(s.game.find("/debug/110000_TALL_POWER.dsa"))
-    added = s.action_files[-1]
-    assert s.is_added_action_file(added.name) and not s.is_added_action_file(own[0])
+    added = s.action_sets[-1]
+    assert s.is_added_action_set(added.name) and not s.is_added_action_set(own[0])
     s.set_action((added, added.actions[0]))
-    s.remove_action_file(added.name)
-    assert [f.name for f in s.action_files] == own and s.action is None
-    s.remove_action_file(own[0])
-    assert [f.name for f in s.action_files] == own
+    s.remove_action_set(added.name)
+    assert [f.name for f in s.action_sets] == own and s.action is None
+    s.remove_action_set(own[0])
+    assert [f.name for f in s.action_sets] == own
 
 
 def test_action_colour_scheme_does_not_outlive_the_action(session):
     file = dsa.parse(build_actions(), "fixture.dsa")
-    session.action_files = [file]
+    session.action_sets = [file]
     session.set_action((file, file.actions[0]))
     session.set_action_frame(10)  # the colour command picks scheme 2 here
     assert session.options.palette == 2

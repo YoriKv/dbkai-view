@@ -9,10 +9,10 @@ a panel can be added or removed without touching the others.
 ## Layout
 
 - **Assets** dock (`asset_tree.py`): every model, motion set, texture set
-  and action file in the ROM as a tree of paths with a filter box, including
+  and action set in the ROM as a tree of paths with a filter box, including
   the models and motions embedded in the `sp/*.dsdz` story packages.
   Activating a model loads it, a motion binds it to the loaded model, and an
-  action file joins the Actions tab, so any character can be posed with any
+  action set joins the Actions tab, so any character can be posed with any
   file's actions; *Remove file* there takes such a file out again (the
   model's own files stay).
 - **Viewport** (`viewport.py`): a `QOpenGLWidget` on a 3.3 core context
@@ -83,7 +83,7 @@ The same operations exist headless: `python -m dbkai.cli --help`.
 Setting `DBKAI_SCREENSHOT=<png>` makes the app load `DBKAI_ASSET` (an asset
 path as the Assets dock shows it) after opening the ROM, grab the viewport
 two seconds later, write the image and quit. `DBKAI_ACTION=<id>` plays that
-action from the loaded action files, `DBKAI_FRAME` picks a frame of it (or of
+action from the loaded action sets, `DBKAI_FRAME` picks a frame of it (or of
 the default clip without an action), `DBKAI_MOTION=bind` shows the bind pose
 and `DBKAI_CAMERA=yaw,pitch` turns the camera. This is how rendering changes
 are verified without a person at the screen.

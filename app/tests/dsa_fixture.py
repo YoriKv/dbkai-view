@@ -1,4 +1,4 @@
-"""A synthetic DSA action file: two actions, a constant visibility command, a
+"""A synthetic DSA action set: two actions, a constant visibility command, a
 keyframed one, a colour command and a link, laid out as docs/formats/dsa.md
 describes."""
 

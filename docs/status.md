@@ -18,7 +18,7 @@ is in [`formats/`](formats/) and [`app/viewer.md`](app/viewer.md).
 - **Draw semantics**: the 32-bit visibility mask (mesh groups low, material
   parts high), culling and alpha per mesh, billboard bones, the mesh scale
   shift.
-- **Action files** ([formats/dsa.md](formats/dsa.md)): actions and their
+- **Action sets** ([formats/dsa.md](formats/dsa.md)): actions and their
   command chains; motion (`0x11`), visibility (`0x12`), colour scheme
   (`0x13`), link (`0x03`) and sound (`0x09`) commands; resources resolved to
   motion-set clips by number; the `PRM` parameter table with the visibility

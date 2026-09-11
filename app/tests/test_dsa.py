@@ -1,4 +1,4 @@
-"""The action file parser and the masks it yields, on the synthetic file."""
+"""The action set parser and the masks it yields, on the synthetic file."""
 
 from dbkai.formats import dsa
 from tests.dsa_fixture import build_actions
