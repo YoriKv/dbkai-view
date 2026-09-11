@@ -16,8 +16,9 @@ qmd update && qmd embed        # re-index after adding or editing docs
 
 - **[`development.md`](development.md)** — working in this checkout: the two
   venvs, WSL, PyCharm, the tests, lint and format.
-- **[`app/`](app/)** — the viewer's design decisions. Start at
-  [`app/theme.md`](app/theme.md).
+- **[`app/`](app/)** — the viewer's design decisions:
+  [`app/viewer.md`](app/viewer.md) for the session, viewport and panels,
+  [`app/theme.md`](app/theme.md) for the palette.
 - **[`formats/`](formats/)** — what the game's files contain, as it is worked
   out. [`formats/rom.md`](formats/rom.md) is the cartridge itself: code
   modules, overlay slots, file system. [`formats/archive.md`](formats/archive.md)

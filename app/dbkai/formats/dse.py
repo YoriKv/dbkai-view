@@ -125,6 +125,8 @@ class DisplayList:
     data: bytes
     bones: tuple[int, ...] = ()
     header: int = 0
+    material: int = 0
+    alpha: int = 31
 
     @property
     def is_skinned(self) -> bool:
@@ -208,6 +210,17 @@ class Mesh:
     def vertex_count(self) -> int:
         return sum(dl.vertex_count for dl in self.display_lists)
 
+    @property
+    def materials(self) -> list[int]:
+        """Every material the mesh's lists use, first use first. A mesh
+        switches material mid-stream when, say, a trouser leg continues past
+        the skin of the ankle."""
+        seen: list[int] = []
+        for dl in self.display_lists:
+            if dl.material not in seen:
+                seen.append(dl.material)
+        return seen
+
 
 @dataclass(frozen=True)
 class Material:
@@ -218,6 +231,14 @@ class Material:
     wrap: int  # TEXIMAGE_PARAM bits 16-19: repeat S, repeat T, flip S, flip T
     diffuse: tuple[int, int, int]
     raw: bytes = field(repr=False)
+
+    @property
+    def textured(self) -> bool:
+        return bool(self.raw[4] & 1)
+
+    @property
+    def alpha(self) -> int:
+        return self.raw[6]
 
     @property
     def repeat_s(self) -> bool:
@@ -473,6 +494,10 @@ def parse(data: bytes) -> DseFile:
 
     # -- meshes ---------------------------------------------------------------
     meshes: list[Mesh] = []
+    chunk_offsets = sorted(
+        struct.unpack_from("<I", data, rel[1] + _MESH_SIZE * i + 4)[0]
+        for i in range(n_meshes)
+    )
     for i in range(n_meshes):
         name_off, chunk_off, flags, color = struct.unpack_from(
             "<4I", data, rel[1] + _MESH_SIZE * i
@@ -489,18 +514,25 @@ def parse(data: bytes) -> DseFile:
             chunk_flags, mat_word = 0, 0
         elif chunk_type != 2 or header_len != 8:
             raise DseError(f"mesh {i}: expected a mesh chunk at {p:#x}")
-        p += header_len
         lists: list[DisplayList] = []
-        if chunk_type == 1:
-            p = rel[1]
-        # A mesh's display lists run until something that is not one: usually
-        # an end chunk (type 1), sometimes straight into the next mesh.
-        while p + 32 <= rel[1]:
-            ctype, _sub, size = struct.unpack_from("<HHI", data, p)
-            if ctype not in (3, 4):
+        material, alpha = mat_word & 0x3FF, (mat_word >> 10) & 0x1F
+        # A mesh runs to its end chunk (type 1), switching material at every
+        # further type-2 chunk on the way. Not every mesh has an end chunk:
+        # some run straight into the next mesh's table offset.
+        stop = min(
+            (HEADER_SIZE + o for o in chunk_offsets if HEADER_SIZE + o > p),
+            default=rel[1],
+        )
+        while p + 8 <= stop and chunk_type != 1:
+            ctype, _cflags, cvalue, size = struct.unpack_from("<BBHI", data, p)
+            if ctype == 1:
                 break
-            if size < 32 or p + size > rel[1]:
-                raise DseError(f"mesh {i}: display list chunk at {p:#x} overruns")
+            if ctype == 2 and size == 8:
+                material, alpha = cvalue & 0x3FF, (cvalue >> 10) & 0x1F
+                p += size
+                continue
+            if ctype not in (3, 4) or size < 32 or p + size > stop:
+                break
             count, layout = struct.unpack_from("<HH", data, p + 8)
             list_bones: tuple[int, ...] = ()
             header = 0
@@ -518,6 +550,8 @@ def parse(data: bytes) -> DseFile:
                     data[p + 32 : p + size],
                     list_bones,
                     header,
+                    material,
+                    alpha,
                 )
             )
             p += size
@@ -542,15 +576,20 @@ def parse(data: bytes) -> DseFile:
     for i in range(n_materials):
         p = rel[3] + _MATERIAL_SIZE * i
         raw = data[p : p + _MATERIAL_SIZE]
-        name_off, wrap, _unk5, _unk6, part, diffuse = struct.unpack_from("<IBBBBH", raw)
-        tex = raw[12]
+        name_off, flags, _alpha, part, diffuse = struct.unpack_from("<IHBBH", raw)
+        tex = raw[0x10]
+        # TEXIMAGE_PARAM layout: repeat S/T in bits 0-1, flip S/T in bits 2-3.
+        # The material keeps repeat in bits 2-3 and flip in bits 8-9, and a
+        # flip implies repeat on the hardware.
+        flip = (flags >> 8) & 3
+        repeat = ((flags >> 2) & 3) | flip
         materials.append(
             Material(
                 index=i,
                 name=string(name_off),
                 texture=None if tex == NO_TEXTURE or tex >= n_textures else tex,
                 part=part,
-                wrap=wrap & 0xF,
+                wrap=repeat | (flip << 2),
                 diffuse=(diffuse & 0x1F, (diffuse >> 5) & 0x1F, (diffuse >> 10) & 0x1F),
                 raw=raw,
             )

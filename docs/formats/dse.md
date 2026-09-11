@@ -110,8 +110,11 @@ order: `name`, `bone index`, `index into table A`, 0.
 A mesh's data is a run of chunks, each `u8 type, u8 flags, u16 value, u32
 length` (length includes the header):
 
-- **type 2**, length 8: begins a mesh. `value` is `alpha << 10 | material
-  index`. `flags` bit 0 is set on a few meshes (meaning unknown).
+- **type 2**, length 8: selects a material: `value` is `alpha << 10 |
+  material index`. A mesh begins with one and may contain more — Piccolo's
+  knee mesh draws the ankle skin, then switches to the trouser material for
+  the rest of the leg. `flags` bit 0 is set on a few meshes (meaning
+  unknown).
 - **type 3** (triangles) and **type 4** (quads): a display list. The 32-byte
   header continues `u16 vertex count, u16 layout, u32 weights offset, u16
   bones[…]`; the vertex data follows to `length`. `layout`'s low byte is the
@@ -119,9 +122,9 @@ length` (length includes the header):
   ([gx.md](gx.md)); `0x10` = a raw vertex array the game skins on the CPU;
   `0x08` = has texture coordinates; `0x04` = has colours; `0x02` = has
   normals.
-- **type 1**, length 8: ends the mesh. Not always present — a mesh's lists
-  run until a chunk that is not type 3 or 4. A table-A entry that points at a
-  type-1 chunk is an empty mesh.
+- **type 1**, length 8: ends the mesh. Not always present — a mesh also ends
+  at the next mesh's table offset. A table-A entry that points at a type-1
+  chunk is an empty mesh.
 
 A **packed** list's vertices are in the mesh's bone's local space: the game
 draws the list behind that bone's world matrix. Texture coordinates are in a

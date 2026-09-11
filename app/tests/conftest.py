@@ -101,3 +101,22 @@ def window(qtbot):
     widget = MainWindow()
     qtbot.addWidget(widget)
     return widget
+
+
+@pytest.fixture(autouse=True)
+def _no_modal_dialogs(monkeypatch):
+    """Turn the app's message boxes into exceptions.
+
+    Under the offscreen platform a modal's ``exec()`` never returns, so a test
+    that reaches one wedges the run. The window only opens a message box to
+    report a failure, which a test would rather see as a traceback.
+    """
+    if "PySide6.QtWidgets" not in sys.modules:
+        return
+    from PySide6.QtWidgets import QMessageBox
+
+    def raise_instead(*args, **_kwargs):
+        raise AssertionError(f"a message box opened: {args[1:]}")
+
+    for name in ("critical", "information", "warning", "about"):
+        monkeypatch.setattr(QMessageBox, name, staticmethod(raise_instead))

@@ -29,10 +29,20 @@ from dbkai.model.skeleton import Skeleton
 #: scales raw coordinates by ``width / 256``.
 UV_UNITS = 256.0
 
+#: Mesh groups holding hand poses other than the open hand (groups 8 and 9).
+HAND_ALTERNATES = frozenset({6, 7, 10, 11, 12, 13})
+#: Material parts shown at rest: always-on, neutral face, neutral mouth, head skin.
+DEFAULT_PARTS = frozenset({0, 1, 5, 15})
+
 
 @dataclass
 class MeshData:
-    """One drawable mesh."""
+    """One drawable batch: a mesh's lists that share a material.
+
+    ``index`` is the mesh in the file and ``sub`` which of its material runs
+    this is; ``uid`` is unique across the model and is what the viewer keys
+    per-mesh visibility on.
+    """
 
     index: int
     name: str
@@ -52,6 +62,8 @@ class MeshData:
     fog: bool
     alpha: int
     shift: int
+    sub: int = 0
+    uid: int = 0
 
     @property
     def vertex_count(self) -> int:
@@ -126,14 +138,15 @@ class Model:
     def default_visibility(self) -> tuple[set[int], set[int]]:
         """The game's usual selection: the (groups, parts) to show.
 
-        Groups 0-5 are the body, face, hair and limbs; 6 up are alternatives
-        the game switches between, of which the open hands (8 and 9) are the
-        common rest state. Part 0 is always on; 1 is the neutral face and 5 the
-        neutral mouth, and the rest are expressions and extras the game turns
-        on by state.
+        Groups 6-13 are the hand poses the game switches between (fist, open,
+        grip, special), of which the open hands, 8 and 9, are the rest state;
+        every other group is shown, since what the rest mean differs per
+        character. Part 0 is always on; 1 is the neutral face, 5 the neutral
+        mouth and 15 the head skin the title screen shows; the rest are
+        expressions and extras the game turns on by state.
         """
-        groups = {g for g in self.groups if g <= 5 or g in (8, 9)}
-        parts = {p for p in self.parts if p in (0, 1, 5)}
+        groups = {g for g in self.groups if g not in HAND_ALTERNATES}
+        parts = {p for p in self.parts if p in DEFAULT_PARTS}
         return groups, parts
 
     def visible_meshes(self, groups: set[int], parts: set[int]) -> list[MeshData]:
@@ -172,17 +185,36 @@ def build(file: dse.DseFile, name: str = "") -> Model:
         )
         for t in file.textures
     ]
-    meshes = [_build_mesh(m, file, skeleton) for m in file.meshes]
+    meshes: list[MeshData] = []
+    for m in file.meshes:
+        runs = m.materials or [m.material]
+        for sub, material in enumerate(runs):
+            lists = [dl for dl in m.display_lists if dl.material == material]
+            label = m.name
+            if len(runs) > 1 and material < len(file.materials):
+                label = f"{m.name} [{file.materials[material].name}]"
+            built = _build_mesh(m, file, skeleton, lists, material, label)
+            built.sub = sub
+            built.uid = len(meshes)
+            meshes.append(built)
     return Model(name or file.name, skeleton, meshes, materials, textures, file)
 
 
-def _build_mesh(mesh: dse.Mesh, file: dse.DseFile, skeleton: Skeleton) -> MeshData:
+def _build_mesh(
+    mesh: dse.Mesh,
+    file: dse.DseFile,
+    skeleton: Skeleton,
+    lists: list[dse.DisplayList],
+    material_index: int,
+    label: str,
+) -> MeshData:
     material = (
-        file.materials[mesh.material] if mesh.material < len(file.materials) else None
+        file.materials[material_index] if material_index < len(file.materials) else None
     )
     part = material.part if material else 0
     default_color = np.array([c / 31 for c in mesh.color], dtype=np.float32)
     factor = float(1 << mesh.shift)
+    alpha = lists[0].alpha if lists else mesh.alpha
     positions: list[np.ndarray] = []
     uvs: list[np.ndarray] = []
     colors: list[np.ndarray] = []
@@ -190,14 +222,14 @@ def _build_mesh(mesh: dse.Mesh, file: dse.DseFile, skeleton: Skeleton) -> MeshDa
     weights: list[np.ndarray] = []
     indices: list[np.ndarray] = []
     max_joints = 1
-    skinned = any(dl.is_skinned for dl in mesh.display_lists)
-    for dl in mesh.display_lists:
+    skinned = any(dl.is_skinned for dl in lists)
+    for dl in lists:
         if dl.is_skinned:
             max_joints = max(max_joints, len(dl.bones))
     base = 0
     bone = mesh.bone if mesh.bone < len(skeleton) else 0
     bind = skeleton.bind_world[bone] if len(skeleton) else np.eye(4)
-    for dl in mesh.display_lists:
+    for dl in lists:
         per = dl.primitive.vertices_per_face
         if dl.is_skinned:
             verts = dl.skinned_vertices()
@@ -262,8 +294,8 @@ def _build_mesh(mesh: dse.Mesh, file: dse.DseFile, skeleton: Skeleton) -> MeshDa
 
     return MeshData(
         index=mesh.index,
-        name=mesh.name,
-        material=mesh.material,
+        name=label,
+        material=material_index,
         group=mesh.group,
         part=part,
         double_sided=mesh.double_sided,
@@ -277,7 +309,7 @@ def _build_mesh(mesh: dse.Mesh, file: dse.DseFile, skeleton: Skeleton) -> MeshDa
         indices=cat(indices, (0, 3), np.uint32),
         has_vertex_colors=mesh.has_vertex_colors,
         fog=bool(mesh.flags & 0x20),
-        alpha=mesh.alpha,
+        alpha=alpha,
         shift=mesh.shift,
     )
 

@@ -142,10 +142,8 @@ def build_model() -> bytes:
         "<4I", mesh_b, off1, 0x60 | (1 << 24), rgb555(31, 31, 31) | (1 << 16)
     )
     table_b = struct.pack("<4I", mesh_a, 1, 0, 0) + struct.pack("<4I", mesh_b, 0, 1, 0)
-    material = struct.pack("<IBBBBH", mat, 0x0F, 3, 31, 0, rgb555(25, 25, 25)) + bytes(
-        6
-    )
-    material += bytes([0, 0xFD]) + bytes(2) + struct.pack("<II", 1, 1) + bytes(8)
+    material = struct.pack("<IHBBH", mat, 0x020F, 31, 0, rgb555(25, 25, 25)) + bytes(6)
+    material += bytes([0, 0xFD, 0, 0]) + struct.pack("<II", 1, 1) + bytes(8)
     assert len(material) == 36
 
     # Texture: 8x8 pal16, raw texels (index = x), 16 colours, colour 0 transparent.

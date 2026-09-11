@@ -8,6 +8,7 @@ with no counterpart keeps its bind pose.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 
 import numpy as np
 
@@ -36,7 +37,7 @@ class Motion:
     file: dse.DseFile
     name: str
 
-    @property
+    @cached_property
     def clips(self) -> list[Clip]:
         if self.file.animations:
             return [
