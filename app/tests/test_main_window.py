@@ -95,3 +95,21 @@ def test_per_clip_export_writes_a_folder(qtbot, tmp_path, monkeypatch):
     window.export_gltf_per_clip()
     assert [p.name for p in tmp_path.iterdir()] == ["fixture__000_spin.glb"]
     assert "1 clip files" in window.statusBar().currentMessage()
+
+
+def test_actions_panel_lists_and_selects(qtbot):
+    from dbkai.formats import dsa
+    from tests.dsa_fixture import build_actions
+
+    window = _window(qtbot)
+    window.session.action_files = [dsa.parse(build_actions(), "fixture.dsa")]
+    window.session.actions_changed.emit()
+    tree = window.actions.tree
+    assert tree.topLevelItemCount() == 1
+    top = tree.topLevelItem(0)
+    assert top.childCount() == 2 and top.child(0).text(0) == "1000"
+    tree.setCurrentItem(top.child(0))
+    assert window.session.action is not None
+    assert "0x8023033f" in window.actions.mask_label.text()
+    window.actions.clear.click()
+    assert window.session.action is None

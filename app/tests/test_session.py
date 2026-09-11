@@ -3,10 +3,11 @@ ROM."""
 
 import pytest
 
-from dbkai.formats import dse
+from dbkai.formats import dsa, dse
 from dbkai.model import scene
 from dbkai.model.animation import Motion
 from dbkai.ui.session import Session
+from tests.dsa_fixture import build_actions
 from tests.dse_fixture import build_model, build_motion
 
 
@@ -96,3 +97,27 @@ def test_open_file_accepts_models_and_motions(tmp_path, qapp):
     (tmp_path / "bad.dse").write_bytes(b"nope")
     with pytest.raises(ValueError):
         s.open_file(tmp_path / "bad.dse")
+
+
+def test_action_drives_visibility(session):
+    session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
+    file = dsa.parse(build_actions(), "fixture.dsa")
+    session.action_files = [file]
+    session.set_action((file, file.actions[0]))
+    # 0x8023033F: groups 0-5, 8, 9 and parts 0, 1, 5, 15 - of which the
+    # fixture has groups 0 and 1 and part 0.
+    assert session.visibility.groups == {0, 1} and session.visibility.parts == {0}
+    session.set_action((file, file.actions[1]))
+    assert session.action_mask() is None  # frame 0: no command yet
+    session.set_clip_frame(2)
+    assert session.action_mask() == 0x804300FF
+    assert session.visibility.groups == {0, 1}
+    session.set_action(None)
+    assert session.action is None
+
+
+def test_apply_mask_and_rest(session):
+    session.apply_mask(0x00010001)  # group 0, part 0 only
+    assert session.visibility.groups == {0} and session.visibility.parts == {0}
+    session.reset_visibility()
+    assert session.visibility.groups == {0, 1}

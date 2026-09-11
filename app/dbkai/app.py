@@ -83,6 +83,13 @@ def _install_screenshot_hook(app: QApplication, window: MainWindow) -> None:
                 window.session.load_asset(found)
         if os.environ.get("DBKAI_MOTION") == "bind":
             window.session.set_motion(None)
+        action = os.environ.get("DBKAI_ACTION")  # "<action id>" from the loaded files
+        if action:
+            for file in window.session.action_files:
+                found = file.action_by_id(int(action))
+                if found is not None:
+                    window.session.set_action((file, found))
+                    break
         frame = os.environ.get("DBKAI_FRAME")
         if frame and window.session.clip is not None:
             window.session.set_clip_frame(int(frame))

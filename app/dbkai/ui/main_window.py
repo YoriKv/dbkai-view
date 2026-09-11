@@ -28,7 +28,13 @@ from dbkai.export.png import encode_png
 from dbkai.game import AssetKind
 from dbkai.model.animation import BoundMotion, Clip
 from dbkai.ui.asset_tree import AssetTree
-from dbkai.ui.panels import AnimationPanel, MaterialsPanel, PartsPanel, SkeletonPanel
+from dbkai.ui.panels import (
+    ActionsPanel,
+    AnimationPanel,
+    MaterialsPanel,
+    PartsPanel,
+    SkeletonPanel,
+)
 from dbkai.ui.session import Session
 from dbkai.ui.settings import (
     load_bool_setting,
@@ -88,11 +94,13 @@ class MainWindow(QMainWindow):
 
         self.parts = PartsPanel(self.session)
         self.animation = AnimationPanel(self.session)
+        self.actions = ActionsPanel(self.session)
         self.materials = MaterialsPanel(self.session)
         self.skeleton = SkeletonPanel(self.session)
         tabs = QTabWidget()
         tabs.addTab(self.parts, "Parts")
         tabs.addTab(self.animation, "Animation")
+        tabs.addTab(self.actions, "Actions")
         tabs.addTab(self.materials, "Materials")
         tabs.addTab(self.skeleton, "Skeleton")
         self.model_dock = self._dock(

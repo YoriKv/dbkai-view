@@ -86,10 +86,19 @@ def _export_asset(
     return path
 
 
+#: What extract writes: the kinds that hold models, motions or textures.
+_EXTRACTABLE = {
+    AssetKind.MODEL,
+    AssetKind.TEXTURES,
+    AssetKind.MOTION,
+    AssetKind.MOTION_SET,
+}
+
+
 def cmd_extract(args: argparse.Namespace) -> int:
     game = _open(args.rom)
     out = Path(args.out)
-    assets = _select(game, args.kind, args.match)
+    assets = [a for a in _select(game, args.kind, args.match) if a.kind in _EXTRACTABLE]
     failed = 0
     for a in assets:
         try:
@@ -123,7 +132,10 @@ def cmd_export(args: argparse.Namespace) -> int:
             motions.append((bound, c))
     visible = None
     if not args.all_parts:
-        groups, parts = model.default_visibility()
+        mask = game.rest_mask()
+        groups, parts = (
+            model.visibility_from_mask(mask) if mask is not None else model.everything()
+        )
         visible = model.visible_meshes(groups, parts)
     count = len(visible if visible is not None else model.meshes)
     if args.per_clip:

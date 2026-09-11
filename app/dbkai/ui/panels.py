@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from dbkai.formats import dsa
 from dbkai.model.animation import Motion
 from dbkai.ui.session import Session
 
@@ -39,7 +40,9 @@ _ROLE = Qt.ItemDataRole.UserRole
 
 class PartsPanel(QWidget):
     """The two game masks (mesh groups and material parts) and a per-mesh
-    override, as three checkable trees."""
+    override, as three checkable trees. *Rest* restores the game's rest
+    preset; the Actions tab drives the masks from a chosen action or preset
+    instead."""
 
     def __init__(self, session: Session, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -48,7 +51,7 @@ class PartsPanel(QWidget):
         self.tree.setHeaderLabels(["Item", "Meshes"])
         self.tree.setColumnWidth(0, 220)
         buttons = QHBoxLayout()
-        self.reset = QPushButton("Game default")
+        self.reset = QPushButton("Rest")
         self.everything = QPushButton("Show all")
         buttons.addWidget(self.reset)
         buttons.addWidget(self.everything)
@@ -424,3 +427,97 @@ class SkeletonPanel(QWidget):
 
 def motion_label(motion: Motion | None) -> str:
     return motion.name if motion else "bind pose"
+
+
+# -- actions ------------------------------------------------------------------
+
+
+class ActionsPanel(QWidget):
+    """The character's actions from its ``.dsa`` files. Choosing one drives
+    the part visibility (and colour scheme) from its commands as the clip
+    frame moves."""
+
+    def __init__(self, session: Session, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.session = session
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(["Action", "Frames", "Visibility"])
+        self.tree.setColumnWidth(0, 150)
+        self.mask_label = QLabel("")
+        self.clear = QPushButton("No action")
+        row = QHBoxLayout()
+        row.addWidget(self.clear)
+        row.addWidget(self.mask_label, 1)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(row)
+        layout.addWidget(self.tree, 1)
+        self.tree.currentItemChanged.connect(self._chosen)
+        self.clear.clicked.connect(lambda: session.set_action(None))
+        session.actions_changed.connect(self.rebuild)
+        session.frame_changed.connect(self._frame)
+        session.visibility_changed.connect(self._frame)
+        self._building = False
+
+    def rebuild(self) -> None:
+        self._building = True
+        self.tree.clear()
+        presets = self.session.game.visibility_presets if self.session.game else {}
+        if presets:
+            top = QTreeWidgetItem(["Presets (parameter table)", str(len(presets)), ""])
+            self.tree.addTopLevelItem(top)
+            for state, mask in sorted(presets.items()):
+                groups, parts = dsa.split_mask(mask)
+                item = QTreeWidgetItem(
+                    [
+                        str(state),
+                        "",
+                        f"{mask:#010x} groups {sorted(groups)} parts {sorted(parts)}",
+                    ]
+                )
+                item.setData(0, _ROLE, ("preset", mask))
+                top.addChild(item)
+        for file in self.session.action_files:
+            top = QTreeWidgetItem([file.name, str(len(file.actions)), ""])
+            self.tree.addTopLevelItem(top)
+            for action in file.actions:
+                vis = action.visibility
+                summary = ""
+                if vis:
+                    first = vis[0].mask_at(vis[0].start)
+                    summary = f"{len(vis)} cmd, {first:#010x}"
+                item = QTreeWidgetItem(
+                    [f"{action.action_id}", str(action.duration), summary]
+                )
+                item.setData(0, _ROLE, (file, action))
+                top.addChild(item)
+                if self.session.action is not None and self.session.action[1] is action:
+                    self.tree.setCurrentItem(item)
+            top.setExpanded(True)
+        self._building = False
+        self._frame(self.session.frame)
+
+    def _chosen(
+        self, item: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
+    ) -> None:
+        if self._building or item is None:
+            return
+        choice = item.data(0, _ROLE)
+        if not choice:
+            return
+        if choice[0] == "preset":
+            self.session.apply_mask(choice[1])
+        else:
+            self.session.set_action(choice)
+
+    def _frame(self, *_args: object) -> None:
+        mask = self.session.action_mask()
+        if self.session.action is None:
+            self.mask_label.setText("Parts as set in the Parts tab")
+        elif mask is None:
+            self.mask_label.setText("No visibility command at this frame")
+        else:
+            groups, parts = dsa.split_mask(mask)
+            self.mask_label.setText(
+                f"{mask:#010x}: groups {sorted(groups)}, parts {sorted(parts)}"
+            )

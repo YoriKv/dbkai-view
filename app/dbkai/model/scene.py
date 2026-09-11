@@ -29,11 +29,6 @@ from dbkai.model.skeleton import Skeleton
 #: scales raw coordinates by ``width / 256``.
 UV_UNITS = 256.0
 
-#: Mesh groups holding hand poses other than the open hand (groups 8 and 9).
-HAND_ALTERNATES = frozenset({6, 7, 10, 11, 12, 13})
-#: Material parts shown at rest: always-on, neutral face, neutral mouth, head skin.
-DEFAULT_PARTS = frozenset({0, 1, 5, 15})
-
 
 @dataclass
 class MeshData:
@@ -135,18 +130,16 @@ class Model:
         )
         return lo, hi
 
-    def default_visibility(self) -> tuple[set[int], set[int]]:
-        """The game's usual selection: the (groups, parts) to show.
+    def everything(self) -> tuple[set[int], set[int]]:
+        """Every group and part the model has. What is shown when no game
+        data says otherwise: the game's rest mask comes from its parameter
+        table (:func:`dbkai.formats.prm.visibility_presets`)."""
+        return set(self.groups), set(self.parts)
 
-        Groups 6-13 are the hand poses the game switches between (fist, open,
-        grip, special), of which the open hands, 8 and 9, are the rest state;
-        every other group is shown, since what the rest mean differs per
-        character. Part 0 is always on; 1 is the neutral face, 5 the neutral
-        mouth and 15 the head skin the title screen shows; the rest are
-        expressions and extras the game turns on by state.
-        """
-        groups = {g for g in self.groups if g not in HAND_ALTERNATES}
-        parts = {p for p in self.parts if p in DEFAULT_PARTS}
+    def visibility_from_mask(self, mask: int) -> tuple[set[int], set[int]]:
+        """A draw mask as the (groups, parts) of this model it enables."""
+        groups = {g for g in self.groups if mask & (1 << g)}
+        parts = {p for p in self.parts if mask & (1 << (16 + p))}
         return groups, parts
 
     def visible_meshes(self, groups: set[int], parts: set[int]) -> list[MeshData]:

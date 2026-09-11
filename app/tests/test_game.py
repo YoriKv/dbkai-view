@@ -6,6 +6,7 @@ import pytest
 
 from dbkai.game import AssetKind, GameData, unwrap
 from dbkai.nds.rom import NdsRom, RomError
+from tests.dsa_fixture import build_actions, build_presets
 from tests.dse_fixture import build_model, build_motion
 from tests.test_formats import _archive_bytes, lz77_compress_literal
 
@@ -64,6 +65,7 @@ def make_rom(files: dict[str, bytes]) -> bytes:
 def rom_bytes():
     archive = _archive_bytes(
         [
+            ("/gamedata/parameter", "", build_presets(), False),
             ("/mdl/chr", "101100_hero.dse", build_model(), True),
             ("/mdl/chr", "nt_101100_hero.dse", build_model(), False),
         ]
@@ -79,6 +81,10 @@ def rom_bytes():
             "readme.txt": b"hi",
             "debug/cube.dse7": lz77_compress_literal(build_model()),
             "debug/300000.dsdz": packed,
+            "debug/100000_NORMAL_BALANCE.dsa": build_actions(),
+            "debug/100001_HERO.dsa": build_actions(),
+            "debug/101100_hero_ultimate.dsa": build_actions(),
+            "debug/110000_TALL_POWER.dsa": build_actions(),
         }
     )
 
@@ -89,6 +95,10 @@ def test_rom_lists_files(rom_bytes):
     paths = sorted(str(f.path) for f in rom.files)
     assert paths == [
         "/archiveDBK.dsa",
+        "/debug/100000_NORMAL_BALANCE.dsa",
+        "/debug/100001_HERO.dsa",
+        "/debug/101100_hero_ultimate.dsa",
+        "/debug/110000_TALL_POWER.dsa",
         "/debug/300000.dsdz",
         "/debug/cube.dse7",
         "/readme.txt",
@@ -110,6 +120,10 @@ def test_game_catalogue_and_relations(rom_bytes):
         "/debug/cube.dse7": AssetKind.MODEL,
         "/debug/300000.dsdz/sm_fixture.dse": AssetKind.MOTION_SET,
         "/debug/300000.dsdz/fixture.dse": AssetKind.MODEL,
+        "/debug/100000_NORMAL_BALANCE.dsa": AssetKind.ACTIONS,
+        "/debug/100001_HERO.dsa": AssetKind.ACTIONS,
+        "/debug/101100_hero_ultimate.dsa": AssetKind.ACTIONS,
+        "/debug/110000_TALL_POWER.dsa": AssetKind.ACTIONS,
     }
     hero = game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse")
     assert hero.numeric_id == 101100 and hero.body_type == 100000
@@ -128,3 +142,18 @@ def test_game_catalogue_and_relations(rom_bytes):
         == 4
     )
     assert unwrap(b"DSE\0" + bytes(100)) == b"DSE\0" + bytes(100)
+
+
+def test_action_files_and_presets(rom_bytes):
+    game = GameData(NdsRom(rom_bytes))
+    hero = game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse")
+    assert [a.name for a in game.action_files_for(hero)] == [
+        "100000_NORMAL_BALANCE.dsa",
+        "100001_HERO.dsa",
+        "101100_hero_ultimate.dsa",
+    ]
+    assert (
+        game.load_actions(game.action_files_for(hero)[0]).actions[0].action_id == 1000
+    )
+    assert game.rest_mask() == 0x8023033F
+    assert game.visibility_presets[10000] == 0x802300FF

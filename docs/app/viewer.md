@@ -16,8 +16,8 @@ a panel can be added or removed without touching the others.
   through PyOpenGL. Orbit with the left button, pan with the right or middle,
   zoom with the wheel; *View > Reset camera* refits. Its backing and grid are
   literal colours, not palette roles (see [theme.md](theme.md)).
-- **Model** dock, four tabs (`panels.py`): *Parts*, *Animation*, *Materials*,
-  *Skeleton*.
+- **Model** dock, five tabs (`panels.py`): *Parts*, *Animation*, *Actions*,
+  *Materials*, *Skeleton*.
 
 ## Drawing what the game draws
 
@@ -31,14 +31,15 @@ positions are re-uploaded; models are a few thousand vertices, so this is
 free.
 
 **Parts.** The game shows a mesh only when its *group* bit and its material's
-*part* bit are both set in a 32-bit mask it drives from game state (facial
-expression, hand pose, costume). The Parts tab exposes both masks as
-checkboxes, plus a per-mesh override. *Game default* restores the session's
-guess at the rest state: every group except the fist, grip and special hand
-poses (6, 7, 10-13), and parts 0, 1, 5 and 15. What groups above 13 mean
-differs per character (Goku: an alternative hairstyle; Piccolo: the arm with
-and without its armour), so they start on and overlap until one is turned
-off. *Show all* turns everything on.
+*part* bit are both set in a 32-bit mask ([formats/dsa.md](../formats/dsa.md)).
+The Parts tab exposes both masks as checkboxes plus a per-batch override;
+*Rest* restores the game's rest preset (state 10005 of its parameter table:
+neutral face, open hands). The **Actions** tab lists that table's presets
+and the character's actions from its `.dsa` files; choosing an action sets
+the masks (and the colour scheme) from its commands at the current clip
+frame, so an attack shows its fists and a damage reaction its damage face
+exactly when the game would. A model opened from a file, with no ROM to read
+the table from, shows everything.
 
 **Animation.** A character model automatically binds the motion set of its
 body type; a prop that carries its own frames plays those. The tab lists the

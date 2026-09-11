@@ -23,7 +23,7 @@ from enum import Enum
 from functools import cached_property
 from pathlib import Path, PurePosixPath
 
-from dbkai.formats import compression, dse
+from dbkai.formats import compression, dsa, dse, prm
 from dbkai.formats.archive import ArchiveEntry, DsaArchive
 from dbkai.model import scene
 from dbkai.model.animation import Motion
@@ -38,6 +38,7 @@ class AssetKind(Enum):
     MOTION = "motion"
     MOTION_SET = "motion set"
     TEXTURES = "textures"
+    ACTIONS = "actions"
     OTHER = "other"
 
 
@@ -207,6 +208,69 @@ class GameData:
                 return a
         return None
 
+    def action_files(self) -> list[Asset]:
+        return [a for a in self.assets if a.kind is AssetKind.ACTIONS]
+
+    def action_files_for(self, asset: Asset) -> list[Asset]:
+        """The action files a character model runs on, by id.
+
+        ``dsa/`` holds one file per body type and fighting style
+        (``101000_NORMAL_BALANCE``, ``111000_TALL_POWER``, ...), a few
+        character overrides right after one (``101001_GOKU``), and one
+        ``<model id>_<name>_ultimate`` per character. A model's style file is
+        the greatest round id not above its own; the overrides are the files
+        within the next hundred ids; the ultimate shares its id.
+        """
+        n = asset.numeric_id
+        if n is None:
+            return []
+        files = self.action_files()
+        style = None
+        for step in (1000, 10000):
+            candidates = [
+                a
+                for a in files
+                if a.numeric_id is not None
+                and a.numeric_id % step == 0
+                and a.numeric_id <= n
+                and n - a.numeric_id < step * 10
+            ]
+            if candidates:
+                style = max(candidates, key=lambda a: a.numeric_id)  # type: ignore[arg-type,return-value]
+                break
+        out: list[Asset] = []
+        if style is not None:
+            base = style.numeric_id or 0
+            out.append(style)
+            out += [
+                a
+                for a in files
+                if a.numeric_id is not None and base < a.numeric_id < base + 100
+            ]
+        out += [a for a in files if a.numeric_id == n and a not in out]
+        return out
+
+    def load_actions(self, asset: Asset) -> dsa.DsaFile:
+        return dsa.parse(self.read(asset), asset.name)
+
+    @cached_property
+    def visibility_presets(self) -> dict[int, int]:
+        """The game's state-id -> draw-mask table, or empty if the archive
+        does not carry it."""
+        if self.archive is None:
+            return {}
+        for e in self.archive.entries:
+            if e.entry_id == prm.VISIBILITY_PRESETS_ID:
+                try:
+                    return prm.visibility_presets(prm.parse(self.archive.read(e)))
+                except prm.PrmError:
+                    return {}
+        return {}
+
+    def rest_mask(self) -> int | None:
+        """The draw mask of the rest preset (:data:`prm.REST_PRESET`)."""
+        return self.visibility_presets.get(prm.REST_PRESET)
+
     def motions_for(self, asset: Asset) -> list[Asset]:
         """Motion files that share the model's numeric id prefix (a prop's
         own animations), plus its body type's set."""
@@ -249,6 +313,8 @@ def _kind_from_name(name: str) -> AssetKind:
         if stem.startswith("st_"):
             return AssetKind.TEXTURES
         return AssetKind.MODEL
+    if lower.endswith(".dsa") and stem[:1].isdigit():
+        return AssetKind.ACTIONS
     return AssetKind.OTHER
 
 

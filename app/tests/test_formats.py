@@ -156,9 +156,11 @@ def _archive_bytes(entries: list[tuple[str, str, bytes, bool]]) -> bytes:
     table = bytearray()
     for _directory, n, data, compressed in entries:
         packed = lz77_compress_literal(data) if compressed else data
-        name = n.encode() + b"\0"
+        name = n.encode() + b"\0" if n else b""
+        # The preset table is found by its id; anything else gets a dummy one.
+        ident = 64419 if data[:4] == b"PRM\0" else 7
         table += struct.pack(
-            "<IIIII", len(name), 7, len(data), len(packed), data_start + len(blob)
+            "<IIIII", len(name), ident, len(data), len(packed), data_start + len(blob)
         )
         blob += name + packed
     dir_table = bytearray()

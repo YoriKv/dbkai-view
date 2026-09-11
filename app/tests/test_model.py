@@ -63,7 +63,8 @@ def test_scene_meshes_are_model_space(model):
     assert cape.positions[2] == pytest.approx([0, 6, 0])
     assert cape.weights[1].tolist() == [0.5, 0.5]
     assert model.groups == [0, 1] and model.parts == [0]
-    assert model.default_visibility() == ({0, 1}, {0})
+    assert model.everything() == ({0, 1}, {0})
+    assert model.visibility_from_mask(0x00010001) == ({0}, {0})
 
 
 def test_skinning_moves_with_bones(model):

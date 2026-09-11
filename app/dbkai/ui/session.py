@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from dbkai.formats import dse
+from dbkai.formats import dsa, dse
 from dbkai.game import Asset, AssetKind, GameData, unwrap
 from dbkai.model import scene
 from dbkai.model.animation import BoundMotion, Clip, Motion
@@ -61,6 +61,7 @@ class Session(QObject):
     frame_changed = Signal(int)
     visibility_changed = Signal()
     options_changed = Signal()
+    actions_changed = Signal()
     playing_changed = Signal(bool)
     status = Signal(str)
 
@@ -78,6 +79,10 @@ class Session(QObject):
         self.frame: int = 0
         self.visibility = Visibility()
         self.options = ViewOptions()
+        #: The action files that apply to the model, and the chosen action.
+        self.action_files: list[dsa.DsaFile] = []
+        self.action: tuple[dsa.DsaFile, dsa.Action] | None = None
+        self.frame_changed.connect(self._apply_action)
         self._timer = QTimer(self)
         self._timer.setInterval(1000 // FRAMES_PER_SECOND)
         self._timer.timeout.connect(self._tick)
@@ -125,16 +130,24 @@ class Session(QObject):
         self.model = model
         self.asset = asset
         self.model_path = path
-        groups, parts = model.default_visibility()
-        self.visibility = Visibility(groups, parts, set())
+        self.visibility = Visibility(*self.rest_visibility(model), set())
         self.motion = None
         self.motion_name = ""
         self.bound = None
         self.clip = None
         self.frame = 0
+        self.action_files = []
+        self.action = None
+        if self.game is not None and asset is not None:
+            for a in self.game.action_files_for(asset):
+                try:
+                    self.action_files.append(self.game.load_actions(a))
+                except Exception:  # noqa: BLE001 - a bad action file must not hide the model
+                    log.exception("loading %s", a.path)
         self.model_changed.emit()
         self.motion_changed.emit()
         self.visibility_changed.emit()
+        self.actions_changed.emit()
         self.status.emit(
             f"{model.name}: {len(model.meshes)} meshes, "
             f"{sum(m.vertex_count for m in model.meshes)} vertices, "
@@ -248,6 +261,35 @@ class Session(QObject):
             return None
         return self.model.skeleton.skin_matrices(world)
 
+    # -- actions --------------------------------------------------------------
+
+    def set_action(self, choice: tuple[dsa.DsaFile, dsa.Action] | None) -> None:
+        """Drive the visibility masks from an action's commands, frame by
+        frame of the current clip. ``None`` stops that."""
+        self.action = choice
+        self.actions_changed.emit()
+        self._apply_action(self.frame)
+
+    def _apply_action(self, _frame: int) -> None:
+        if self.action is None or self.model is None:
+            return
+        _file, action = self.action
+        mask = action.mask_at(self.clip_frame)
+        if mask is not None:
+            groups, parts = self.model.visibility_from_mask(mask)
+            if (groups, parts) != (self.visibility.groups, self.visibility.parts):
+                self.visibility.groups, self.visibility.parts = groups, parts
+                self.visibility_changed.emit()
+        scheme = action.scheme_at(self.clip_frame)
+        if scheme is not None:
+            self.set_option("palette", scheme)
+
+    def action_mask(self) -> int | None:
+        """The mask the chosen action sets at the current frame, if any."""
+        if self.action is None:
+            return None
+        return self.action[1].mask_at(self.clip_frame)
+
     # -- visibility and options -----------------------------------------------
 
     def visible_meshes(self) -> list[MeshData]:
@@ -268,17 +310,31 @@ class Session(QObject):
         _toggle(self.visibility.hidden, uid, hidden)
         self.visibility_changed.emit()
 
+    def rest_visibility(self, model: Model) -> tuple[set[int], set[int]]:
+        """The (groups, parts) of the game's rest preset, or everything when
+        no ROM is open to read the preset table from."""
+        mask = self.game.rest_mask() if self.game is not None else None
+        if mask is None:
+            return model.everything()
+        return model.visibility_from_mask(mask)
+
     def reset_visibility(self) -> None:
         if self.model is not None:
-            groups, parts = self.model.default_visibility()
-            self.visibility = Visibility(groups, parts, set())
+            self.set_action(None)
+            self.visibility = Visibility(*self.rest_visibility(self.model), set())
             self.visibility_changed.emit()
 
     def show_everything(self) -> None:
         if self.model is not None:
-            self.visibility = Visibility(
-                set(self.model.groups), set(self.model.parts), set()
-            )
+            self.set_action(None)
+            self.visibility = Visibility(*self.model.everything(), set())
+            self.visibility_changed.emit()
+
+    def apply_mask(self, mask: int) -> None:
+        """Show exactly what a draw mask enables (a preset, say)."""
+        if self.model is not None:
+            self.set_action(None)
+            self.visibility = Visibility(*self.model.visibility_from_mask(mask), set())
             self.visibility_changed.emit()
 
     def set_option(self, name: str, value: object) -> None:
