@@ -35,7 +35,9 @@ skeleton), which a focused text box keeps for typing; the two docks are
 `Ctrl+1` and `Ctrl+2`. `Space` plays or pauses whatever the transport is
 showing, from wherever the focus is: it resumes where it stands, and starts
 over once the run has reached its last frame. Unlike *Play*, it does not
-rewind.
+rewind. The one exception is a checkable row of the Parts tree, which keeps
+`Space` for its box (`_PartsTree` in `panels/parts.py`); on a heading there it
+still plays.
 
 ## Drawing what the game draws
 

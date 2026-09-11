@@ -49,11 +49,29 @@ def test_space_plays_and_pauses_wherever_the_focus_is(qtbot):
     window = _window(qtbot)
     window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
     _activate(qtbot, window)
-    window.parts.tree.setFocus()
-    QTest.keyClick(window.parts.tree, Qt.Key.Key_Space)
+    window.assets.tree.setFocus()
+    QTest.keyClick(window.assets.tree, Qt.Key.Key_Space)
     assert window.session.playing
-    QTest.keyClick(window.parts.tree, Qt.Key.Key_Space)
+    QTest.keyClick(window.assets.tree, Qt.Key.Key_Space)
     assert not window.session.playing
+
+
+def test_space_in_the_parts_tree_toggles_the_row_instead_of_playing(qtbot):
+    window = _window(qtbot)
+    window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
+    _activate(qtbot, window)
+    tree = window.parts.tree
+    tree.setFocus()
+    group = tree.topLevelItem(0).child(0)
+    tree.setCurrentItem(group)
+    was = group.checkState(0)
+    QTest.keyClick(tree, Qt.Key.Key_Space)
+    assert group.checkState(0) != was
+    assert not window.session.playing
+    # A heading has no box, so there Space still means Play / Pause.
+    tree.setCurrentItem(tree.topLevelItem(0))
+    QTest.keyClick(tree, Qt.Key.Key_Space)
+    assert window.session.playing
 
 
 def test_view_letters_toggle_the_view_but_type_into_the_filter(qtbot):

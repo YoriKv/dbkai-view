@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
@@ -30,7 +30,7 @@ class PartsPanel(QWidget):
         super().__init__(parent)
         self.session = session
         self._building = False
-        self.tree = QTreeWidget()
+        self.tree = _PartsTree()
         self.tree.setHeaderLabels(["Item", "Meshes"])
         self.tree.setColumnWidth(0, 220)
         buttons = QHBoxLayout()
@@ -133,6 +133,32 @@ class PartsPanel(QWidget):
             self.session.set_part(value, on)
         else:
             self.session.set_mesh_hidden(value, not on)
+
+
+class _PartsTree(QTreeWidget):
+    """A tree that keeps Space for its check boxes. Space is also the window's
+    Play / Pause shortcut, and a shortcut wins over the focused widget unless
+    that widget claims the key first; here it does, but only when the current
+    row has a box to toggle, so Space on a heading still plays."""
+
+    def event(self, event: QEvent) -> bool:
+        if (
+            event.type() == QEvent.Type.ShortcutOverride
+            and event.key() == Qt.Key.Key_Space
+            and self._current_is_checkable()
+        ):
+            event.accept()
+            return True
+        return super().event(event)
+
+    def _current_is_checkable(self) -> bool:
+        # A heading is flagged checkable too, as every item is by default; the
+        # box is there only once a check state has been set, as on the rows.
+        item = self.currentItem()
+        return (
+            item is not None
+            and item.data(0, Qt.ItemDataRole.CheckStateRole) is not None
+        )
 
 
 def _checkable(texts: list[str], data: tuple[str, int]) -> QTreeWidgetItem:
