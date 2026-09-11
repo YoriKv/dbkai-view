@@ -2,8 +2,7 @@
 
 ## v0.1.1 - unreleased
 
-- First release, with prebuilt apps for Windows, Linux and macOS (Apple Silicon
-  and Intel)
+- Initial release
 - Opens a DB Kai: Ultimate Butoden ROM and browses its models in an OpenGL
   viewport, posed by their body type's motion set
 - Parts, animation, material and skeleton panels
