@@ -18,15 +18,30 @@ from dbkai.model.skeleton import LocalPose, Skeleton
 
 @dataclass(frozen=True)
 class Clip:
-    """A named run of frames in a motion file."""
+    """A named run of frames in a motion file. ``first`` is the take frame
+    number (1-based, as the file records it) of the run's first frame, which
+    is how the action files address frames inside a clip."""
 
     name: str
     start: int
     frame_count: int
+    first: int = 1
 
     @property
     def end(self) -> int:
         return self.start + self.frame_count
+
+    @property
+    def number(self) -> int | None:
+        """The leading number of the clip's name (``00010_..`` -> 10), which
+        the game matches clips by."""
+        digits = self.name.split("_", 1)[0]
+        return int(digits) if digits.isdigit() else None
+
+    def frame_for_take(self, take_frame: int) -> int:
+        """The file frame for a take frame, clamped into the clip."""
+        rel = max(0, min(take_frame - self.first, self.frame_count - 1))
+        return self.start + rel
 
 
 @dataclass
@@ -42,7 +57,10 @@ class Motion:
         if self.file.animations:
             return [
                 Clip(
-                    a.name, a.start, min(a.frame_count, self.file.frame_count - a.start)
+                    a.name,
+                    a.start,
+                    min(a.frame_count, self.file.frame_count - a.start),
+                    a.first,
                 )
                 for a in self.file.animations
             ]
@@ -51,6 +69,12 @@ class Motion:
     @property
     def frame_count(self) -> int:
         return self.file.frame_count
+
+    def clip_by_number(self, number: int) -> Clip | None:
+        for c in self.clips:
+            if c.number == number:
+                return c
+        return None
 
     def bone_index(self, name_hash: int, name: str) -> int | None:
         """The motion bone for a model bone: by name, then by hash. Names

@@ -35,10 +35,12 @@ free.
 The Parts tab exposes both masks as checkboxes plus a per-batch override;
 *Rest* restores the game's rest preset (state 10005 of its parameter table:
 neutral face, open hands). The **Actions** tab lists that table's presets
-and the character's actions from its `.dsa` files; choosing an action sets
-the masks (and the colour scheme) from its commands at the current clip
-frame, so an attack shows its fists and a damage reaction its damage face
-exactly when the game would. A model opened from a file, with no ROM to read
+and the character's actions from its `.dsa` files. Choosing an action plays
+it: its motion command names the clips (of the body's motion set) and the
+take frames, its visibility and colour commands the masks, all driven by the
+action's own frame counter and transport, so an attack shows its fists and a
+damage reaction its damage face exactly when the game would. Scrubbing a
+clip in the Animation tab drops the action again. A model opened from a file, with no ROM to read
 the table from, shows everything.
 
 **Animation.** A character model automatically binds the motion set of its
@@ -66,6 +68,8 @@ The same operations exist headless: `python -m dbkai.cli --help`.
 
 Setting `DBKAI_SCREENSHOT=<png>` makes the app load `DBKAI_ASSET` (an asset
 path as the Assets dock shows it) after opening the ROM, grab the viewport
-two seconds later, write the image and quit. `DBKAI_FRAME` picks a frame of
-the default clip. This is how rendering changes are verified without a person
-at the screen.
+two seconds later, write the image and quit. `DBKAI_ACTION=<id>` plays that
+action from the loaded action files, `DBKAI_FRAME` picks a frame of it (or of
+the default clip without an action), `DBKAI_MOTION=bind` shows the bind pose
+and `DBKAI_CAMERA=yaw,pitch` turns the camera. This is how rendering changes
+are verified without a person at the screen.

@@ -9,6 +9,7 @@ from dbkai.model.animation import Motion
 from dbkai.ui.session import Session
 from tests.dsa_fixture import build_actions
 from tests.dse_fixture import build_model, build_motion
+from tests.test_game import build_rom
 
 
 @pytest.fixture
@@ -109,7 +110,7 @@ def test_action_drives_visibility(session):
     assert session.visibility.groups == {0, 1} and session.visibility.parts == {0}
     session.set_action((file, file.actions[1]))
     assert session.action_mask() is None  # frame 0: no command yet
-    session.set_clip_frame(2)
+    session.set_action_frame(2)
     assert session.action_mask() == 0x804300FF
     assert session.visibility.groups == {0, 1}
     session.set_action(None)
@@ -121,3 +122,29 @@ def test_apply_mask_and_rest(session):
     assert session.visibility.groups == {0} and session.visibility.parts == {0}
     session.reset_visibility()
     assert session.visibility.groups == {0, 1}
+
+
+def test_action_playback_drives_clip_and_frame(qapp):
+    from dbkai.game import GameData
+    from dbkai.nds.rom import NdsRom
+
+    s = Session()
+    s.game = GameData(NdsRom(build_rom()))
+    s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
+    assert s.action_files and s.action_files[0].name == "100000_NORMAL_BALANCE.dsa"
+    file = s.action_files[0]
+    s.set_action((file, file.actions[0]))
+    # The idle action's first segment plays clip number 0 ("000_spin") from
+    # take frame 1, which is the clip's first frame.
+    assert s.clip is not None and s.clip.number == 0
+    assert s.frame == 0 and "clip 00000" in s.action_clip_name()
+    s.set_action_frame(2)
+    assert s.frame == s.clip.frame_for_take(3)
+    s.set_action_frame(10)
+    assert s.clip.number == 0  # the fixture set has no clip 10: stays put
+    assert s.visibility.parts == {0}
+    s.play()
+    s._tick()
+    assert s.action_frame == 11
+    s.set_action(None)
+    assert not s.playing

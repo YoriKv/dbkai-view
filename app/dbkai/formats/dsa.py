@@ -35,8 +35,8 @@ class Op(IntEnum):
     ACTION = 0x00  # the action record itself heads its own chain
     LINK = 0x03  # branch to another action
     HIT = 0x04
-    RESOURCE = 0x09  # play a resource (sound, effect) from the resource table
-    ATTACK = 0x11
+    SOUND = 0x09  # play a sound: kind and sequence id, not a resource
+    MOTION = 0x11  # play motion clips: a looping list of segments
     VISIBILITY = 0x12
     COLOR = 0x13
     HIT_GROUP = 0x14
@@ -129,10 +129,50 @@ class LinkCommand(Command):
 
 
 @dataclass(frozen=True)
-class ResourceCommand(Command):
-    """Op ``0x09``: plays an entry of the resource table."""
+class SoundCommand(Command):
+    """Op ``0x09``: plays a sound of ``kind`` (voice, effect group) with the
+    given sequence id."""
 
-    resource: int = 0
+    kind: int = 0
+    sound: int = 0
+
+
+@dataclass(frozen=True)
+class Segment:
+    """One piece of a motion command: play ``resource`` (a clip of a motion
+    set) from take frame ``start`` for ``length`` frames."""
+
+    resource: int
+    start: int
+    length: int
+    flag: int
+
+
+@dataclass(frozen=True)
+class MotionCommand(Command):
+    """Op ``0x11``: the clips the character plays while the command covers
+    the action's frames. Segments run back to back; ``period`` > 0 wraps
+    the elapsed frames so the list loops."""
+
+    segments: tuple[Segment, ...] = ()
+    period: int = 0
+    mode: int = 0
+
+    def segment_at(self, frame: int) -> tuple[Segment, int] | None:
+        """The segment covering action ``frame`` and the take frame within its
+        clip, as the game's evaluator computes them."""
+        rel = frame - self.start
+        if rel < 0:
+            return None
+        if self.period > 0:
+            rel %= self.period
+        for seg in self.segments:
+            if seg.resource < 0:
+                continue
+            if rel < seg.length:
+                return seg, seg.start + rel
+            rel -= seg.length
+        return None
 
 
 @dataclass(frozen=True)
@@ -166,6 +206,23 @@ class Action:
     @property
     def colors(self) -> list[ColorCommand]:
         return [c for c in self.commands if isinstance(c, ColorCommand)]
+
+    @property
+    def motions(self) -> list[MotionCommand]:
+        return [c for c in self.commands if isinstance(c, MotionCommand)]
+
+    def motion_at(self, frame: int) -> tuple[int, int] | None:
+        """(resource index, take frame) of the clip playing at ``frame``, or
+        ``None`` when no motion command covers it."""
+        best: MotionCommand | None = None
+        for c in self.motions:
+            if c.active and not c.conditional and c.covers(frame):
+                if best is None or c.start >= best.start:
+                    best = c
+        if best is None:
+            return None
+        found = best.segment_at(frame)
+        return None if found is None else (found[0].resource, found[1])
 
     def mask_at(self, frame: int) -> int | None:
         """The draw mask in force at ``frame``: the latest visibility command
@@ -318,9 +375,21 @@ def parse(data: bytes, name: str = "") -> DsaFile:
             return ColorCommand(**common, scheme=payload[4])
         if op == Op.LINK and len(payload) >= 8:
             return LinkCommand(**common, target=struct.unpack_from("<h", payload, 6)[0])
-        if op == Op.RESOURCE and len(payload) >= 2:
-            return ResourceCommand(
-                **common, resource=struct.unpack_from("<h", payload, 0)[0]
+        if op == Op.SOUND and len(payload) >= 4:
+            sound, kind = struct.unpack_from("<hh", payload, 0)
+            return SoundCommand(**common, kind=kind, sound=sound)
+        if op == Op.MOTION and len(payload) >= 0x10:
+            _data_off, mode, count, _u, _hit, period, seg_off = struct.unpack_from(
+                "<IBBHhhI", payload, 0
+            )
+            segments = []
+            for k in range(count):
+                at = base + seg_off + 8 * k
+                if at + 8 > len(data):
+                    break
+                segments.append(Segment(*struct.unpack_from("<4h", data, at)))
+            return MotionCommand(
+                **common, segments=tuple(segments), period=period, mode=mode
             )
         return Command(**common)
 

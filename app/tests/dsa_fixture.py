@@ -51,30 +51,39 @@ def build_actions() -> bytes:
     records.append(command(0x12, 0, 0, 3, vis_const))
     # record 3: colour scheme 2 from frame 10 -> record 4
     records.append(command(0x13, 10, 0, 4, color))
-    # record 4: link to action 1 at frame 20, end of chain
-    records.append(command(0x03, 20, 5, 0, link))
+    # record 4: link to action 1 at frame 20 -> record 6 (motion)
+    records.append(command(0x03, 20, 5, 6, link))
     # record 5: keyframed visibility from frame 2 for 8 frames; tracks follow
     #           the records, so their offsets are filled in below.
     records.append(None)  # type: ignore[arg-type]
     fixed = b"".join(r for r in records if r is not None)
     # The tracked command is 0x24 bytes; tracks come after it.
     vis_tracked_len = 0x24
-    tracks_at = len(fixed) + vis_tracked_len
+    motion_len = 0x20  # record 6, the motion command, sits between them
+    tracks_at = len(fixed) + vis_tracked_len + motion_len
     vis_tracked = struct.pack(
         "<IBBBBIII", 0, 2, 0, 0, 0, 0, tracks_at, tracks_at + len(groups_track)
     )
     records[5] = command(0x12, 2, 8, 0, vis_tracked)
     assert len(records[5]) == vis_tracked_len
     tracks_blob = groups_track + parts_track
-    blob = b"".join(records) + tracks_blob
+    # record 6: motion for the whole idle action: 10 frames of resource 0
+    # from take frame 1, then 20 frames of resource 1 from take frame 5,
+    # looping over 30. Its segment list follows the tracks.
+    segments_at = tracks_at + len(tracks_blob)
+    segments = struct.pack("<4h", 0, 1, 10, 0) + struct.pack("<4h", 1, 5, 20, 0)
+    motion = struct.pack("<IBBHhhI", 0, 0x10, 2, 0, -1, 30, segments_at)
+    records.append(command(0x11, 0, 0, 0, motion))
+    assert len(records[6]) == motion_len
+    blob = b"".join(records) + tracks_blob + segments
     offsets = []
     pos = 0
     for r in records:
         offsets.append(pos)
         pos += len(r)
     n_actions, n_records = 2, len(records)
-    resources = struct.pack("<HHiIiI", 0xFFFF, 0xFFFF, 10, 100000, -1, 0)
-    resources += struct.pack("<HHiIiI", 0xFFFF, 0xFFFF, -500000, 0, len(blob), 1)
+    resources = struct.pack("<HHiIiI", 0xFFFF, 0xFFFF, 0, 100000, -1, 0)
+    resources += struct.pack("<HHiIiI", 0xFFFF, 0xFFFF, 10, 100000, -1, 0)
     extra = b""
     sets = struct.pack("<I", 100000)
     header_size = 0x24

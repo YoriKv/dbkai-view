@@ -90,8 +90,10 @@ def _install_screenshot_hook(app: QApplication, window: MainWindow) -> None:
                 if found is not None:
                     window.session.set_action((file, found))
                     break
-        frame = os.environ.get("DBKAI_FRAME")
-        if frame and window.session.clip is not None:
+        frame = os.environ.get("DBKAI_FRAME")  # an action frame when an action is set
+        if frame and window.session.action is not None:
+            window.session.set_action_frame(int(frame))
+        elif frame and window.session.clip is not None:
             window.session.set_clip_frame(int(frame))
         camera = os.environ.get("DBKAI_CAMERA")
         if camera:

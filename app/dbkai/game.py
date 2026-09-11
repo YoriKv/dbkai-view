@@ -199,6 +199,13 @@ class GameData:
     def motion_sets(self) -> list[Asset]:
         return [a for a in self.assets if a.kind is AssetKind.MOTION_SET]
 
+    def motion_set_by_id(self, set_id: int) -> Asset | None:
+        """The ``smot/sm_<set id>_*.dse`` asset an action file refers to."""
+        for a in self.motion_sets():
+            if a.numeric_id == set_id:
+                return a
+        return None
+
     def motion_set_for(self, asset: Asset) -> Asset | None:
         body = asset.body_type
         if body is None:

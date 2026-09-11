@@ -82,7 +82,8 @@ class Session(QObject):
         #: The action files that apply to the model, and the chosen action.
         self.action_files: list[dsa.DsaFile] = []
         self.action: tuple[dsa.DsaFile, dsa.Action] | None = None
-        self.frame_changed.connect(self._apply_action)
+        self.action_frame: int = 0
+        self._motion_sets: dict[int, Motion] = {}
         self._timer = QTimer(self)
         self._timer.setInterval(1000 // FRAMES_PER_SECOND)
         self._timer.timeout.connect(self._tick)
@@ -173,6 +174,7 @@ class Session(QObject):
 
     def set_motion(self, motion: Motion | None) -> None:
         self.stop()
+        self.action = None
         self.motion = motion
         self.motion_name = motion.name if motion else ""
         self.bound = None
@@ -187,6 +189,7 @@ class Session(QObject):
         self.frame_changed.emit(self.frame)
 
     def set_clip(self, clip: Clip | None) -> None:
+        self.action = None
         self.clip = clip
         self.frame = clip.start if clip else 0
         self.motion_changed.emit()
@@ -211,7 +214,7 @@ class Session(QObject):
         self.set_frame(index + (self.clip.start if self.clip else 0))
 
     def play(self) -> None:
-        if self.clip is None or self._timer.isActive():
+        if (self.clip is None and self.action is None) or self._timer.isActive():
             return
         self._accumulator = 0.0
         self._timer.start()
@@ -227,6 +230,9 @@ class Session(QObject):
         return self._timer.isActive()
 
     def _tick(self) -> None:
+        if self.action is not None:
+            self._tick_action()
+            return
         if self.clip is None:
             self.stop()
             return
@@ -264,31 +270,114 @@ class Session(QObject):
     # -- actions --------------------------------------------------------------
 
     def set_action(self, choice: tuple[dsa.DsaFile, dsa.Action] | None) -> None:
-        """Drive the visibility masks from an action's commands, frame by
-        frame of the current clip. ``None`` stops that."""
+        """Play an action: its motion segments drive the clip and frame, its
+        visibility and colour commands the masks, frame by frame of the
+        action. ``None`` goes back to free clip scrubbing."""
+        self.stop()
         self.action = choice
+        self.action_frame = 0
         self.actions_changed.emit()
-        self._apply_action(self.frame)
+        if choice is not None:
+            self.set_action_frame(0)
 
-    def _apply_action(self, _frame: int) -> None:
-        if self.action is None or self.model is None:
+    def set_action_frame(self, frame: int) -> None:
+        if self.action is None:
             return
         _file, action = self.action
-        mask = action.mask_at(self.clip_frame)
+        self.action_frame = max(0, min(frame, max(action.duration - 1, 0)))
+        self._apply_action()
+
+    def _tick_action(self) -> None:
+        if self.action is None:
+            return
+        self._accumulator += self.speed
+        step = int(self._accumulator)
+        if step <= 0:
+            return
+        self._accumulator -= step
+        duration = max(self.action[1].duration, 1)
+        nxt = self.action_frame + step
+        if nxt >= duration:
+            if not self.loop:
+                self.set_action_frame(duration - 1)
+                self.stop()
+                return
+            nxt %= duration
+        self.set_action_frame(nxt)
+
+    def _apply_action(self) -> None:
+        if self.action is None or self.model is None:
+            return
+        file, action = self.action
+        frame = self.action_frame
+        found = action.motion_at(frame)
+        if found is not None:
+            resource, take_frame = found
+            self._pose_from_resource(file, resource, take_frame)
+        mask = action.mask_at(frame)
         if mask is not None:
             groups, parts = self.model.visibility_from_mask(mask)
             if (groups, parts) != (self.visibility.groups, self.visibility.parts):
                 self.visibility.groups, self.visibility.parts = groups, parts
                 self.visibility_changed.emit()
-        scheme = action.scheme_at(self.clip_frame)
+        scheme = action.scheme_at(frame)
         if scheme is not None:
             self.set_option("palette", scheme)
+        self.frame_changed.emit(self.frame)
+
+    def _pose_from_resource(
+        self, file: dsa.DsaFile, resource: int, take_frame: int
+    ) -> None:
+        """Bind the motion set a resource names and pose its clip's take
+        frame. Embedded resources and unknown sets are left alone."""
+        if not 0 <= resource < len(file.resources) or self.game is None:
+            return
+        res = file.resources[resource]
+        if res.embedded or res.set_id == 0:
+            return
+        motion = self._motion_sets.get(res.set_id)
+        if motion is None:
+            asset = self.game.motion_set_by_id(res.set_id)
+            if asset is None:
+                return
+            motion = self.game.load_motion(asset)
+            self._motion_sets[res.set_id] = motion
+        clip = motion.clip_by_number(res.number)
+        if clip is None:
+            return
+        if self.motion is not motion or self.bound is None:
+            self.motion = motion
+            self.motion_name = motion.name
+            self.bound = (
+                BoundMotion.bind(self.model.skeleton, motion) if self.model else None
+            )
+            self.clip = clip
+            self.motion_changed.emit()
+        elif self.clip is not clip:
+            self.clip = clip
+            self.motion_changed.emit()
+        self.frame = clip.frame_for_take(take_frame)
 
     def action_mask(self) -> int | None:
-        """The mask the chosen action sets at the current frame, if any."""
+        """The mask the chosen action sets at the current action frame."""
         if self.action is None:
             return None
-        return self.action[1].mask_at(self.clip_frame)
+        return self.action[1].mask_at(self.action_frame)
+
+    def action_clip_name(self) -> str:
+        """What the chosen action plays at its current frame, for display."""
+        if self.action is None:
+            return ""
+        file, action = self.action
+        found = action.motion_at(self.action_frame)
+        if found is None:
+            return "no motion"
+        res = file.resources[found[0]] if 0 <= found[0] < len(file.resources) else None
+        if res is None:
+            return "?"
+        if res.embedded:
+            return f"embedded resource {res.number}"
+        return f"clip {res.number:05d} of set {res.set_id}, take frame {found[1]}"
 
     # -- visibility and options -----------------------------------------------
 

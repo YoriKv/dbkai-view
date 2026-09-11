@@ -9,11 +9,16 @@ def test_parse_actions_and_commands():
     assert [a.action_id for a in f.actions] == [1000, 2000]
     assert [a.duration for a in f.actions] == [30, 12]
     assert f.motion_sets == [100000]
-    assert [r.number for r in f.resources] == [10, -500000]
-    assert not f.resources[0].embedded and f.resources[1].embedded
+    assert [r.number for r in f.resources] == [0, 10]
+    assert not f.resources[0].embedded
     idle, hit = f.actions
     kinds = [type(c).__name__ for c in idle.commands]
-    assert kinds == ["VisibilityCommand", "ColorCommand", "LinkCommand"]
+    assert kinds == [
+        "VisibilityCommand",
+        "ColorCommand",
+        "LinkCommand",
+        "MotionCommand",
+    ]
     assert idle.commands[2].target == 1
     assert idle.mask_at(0) == 0x8023033F and idle.mask_at(29) == 0x8023033F
     assert idle.scheme_at(0) is None and idle.scheme_at(10) == 2
@@ -62,3 +67,17 @@ def test_prm_presets():
 
     with pytest.raises(prm.PrmError):
         prm.parse(b"nope")
+
+
+def test_motion_command_segments():
+    f = dsa.parse(build_actions(), "fixture.dsa")
+    idle = f.actions[0]
+    motions = idle.motions
+    assert len(motions) == 1
+    m = motions[0]
+    assert m.period == 30 and [s.resource for s in m.segments] == [0, 1]
+    assert idle.motion_at(0) == (0, 1)  # first segment, take frame 1
+    assert idle.motion_at(9) == (0, 10)
+    assert idle.motion_at(10) == (1, 5)  # second segment starts at take frame 5
+    assert idle.motion_at(31) == (0, 2)  # wrapped over the period
+    assert f.actions[1].motion_at(0) is None

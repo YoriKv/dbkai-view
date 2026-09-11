@@ -60,8 +60,8 @@ Commands seen (opcode: meaning, where the handler has been read):
 |---|---|
 | `0x03` | link: at `start` the character may branch to the action whose record index is the s16 at `0x16` |
 | `0x04`, `0x14` | hit boxes and the group that turns them on |
-| `0x09` | play a resource-table entry (s16 index at `0x10`) — sounds and effects, keyed like motion clips |
-| `0x11` | attack parameters |
+| `0x09` | play a sound: s16 sequence id at `0x10`, s16 kind at `0x12` |
+| `0x11` | **motion**: the clips the character plays. `0x14` flags, `0x15` = segment count, s16 at `0x1A` = loop period, u32 at `0x1C` = offset (relative to the command area) of the segments, 8 bytes each: `s16 resource, s16 take frame, s16 length, s16 flag`. The elapsed frames since `start` (wrapped over the period) walk the segments; the one they land in plays its resource's clip from `take frame` plus the remainder. The u32 at `0x10` points at per-frame data used with header flag bit 3 (root motion, not read) |
 | `0x12` | **visibility**: `0x14` = mode; mode 1 uses the u32 at `0x18` as the draw mask, mode 2 evaluates two tracks at the offsets in `0x1C` (groups) and `0x20` (parts), relative to the command area, at the frame since `start` |
 | `0x13` | **colour scheme**: the byte at `0x14` picks the texture palette |
 | others | not read |
@@ -82,10 +82,12 @@ frame over `period`. The value is the last key at or before the frame,
 
 Twenty bytes: `u16 -1, u16 -1, s32 number, u32 set id, s32 offset, u32
 flags`. A motion-set clip has the set id and the clip's leading number
-(`10` → `00010_100000_NORMAL_idle_ground`); an embedded resource has set 0,
-a negative number, and its data at `offset` into the command area. What
-plays a motion for an action has not been found: the idle actions carry no
-motion command, so the game selects motions elsewhere.
+(`10` → `00010_100000_NORMAL_idle_ground`): the loader formats the number
+with `%05d` and takes the first clip whose name starts with it (`0x020a3ca0`).
+An embedded resource has set 0, a negative number, and its data at `offset`
+into the command area (props and effects of the ultimates). The shared
+NORMAL file's action 1000 plays `00010` for 29 frames from take frame 1,
+1100 plays `00000`, and 2000 chains `01021`, `01022` and `01023`.
 
 ## Visibility presets
 

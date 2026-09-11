@@ -61,8 +61,8 @@ def make_rom(files: dict[str, bytes]) -> bytes:
     )
 
 
-@pytest.fixture
-def rom_bytes():
+def build_rom() -> bytes:
+    """A ROM with the archive, a motion set, action files and packages."""
     archive = _archive_bytes(
         [
             ("/gamedata/parameter", "", build_presets(), False),
@@ -87,6 +87,11 @@ def rom_bytes():
             "debug/110000_TALL_POWER.dsa": build_actions(),
         }
     )
+
+
+@pytest.fixture
+def rom_bytes():
+    return build_rom()
 
 
 def test_rom_lists_files(rom_bytes):

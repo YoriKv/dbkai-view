@@ -110,6 +110,7 @@ def test_actions_panel_lists_and_selects(qtbot):
     assert top.childCount() == 2 and top.child(0).text(0) == "1000"
     tree.setCurrentItem(top.child(0))
     assert window.session.action is not None
-    assert "0x8023033f" in window.actions.mask_label.text()
+    assert "0x8023033f" in window.actions.info.text()
+    assert window.actions.slider.maximum() == 29
     window.actions.clear.click()
     assert window.session.action is None

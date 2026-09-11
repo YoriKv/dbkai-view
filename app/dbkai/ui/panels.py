@@ -433,30 +433,43 @@ def motion_label(motion: Motion | None) -> str:
 
 
 class ActionsPanel(QWidget):
-    """The character's actions from its ``.dsa`` files. Choosing one drives
-    the part visibility (and colour scheme) from its commands as the clip
-    frame moves."""
+    """The character's actions from its ``.dsa`` files, and the game's
+    visibility presets. Choosing an action plays it: the clip, the frame and
+    the part masks all come from its commands."""
 
     def __init__(self, session: Session, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.session = session
         self.tree = QTreeWidget()
-        self.tree.setHeaderLabels(["Action", "Frames", "Visibility"])
+        self.tree.setHeaderLabels(["Action", "Frames", "Plays"])
         self.tree.setColumnWidth(0, 150)
-        self.mask_label = QLabel("")
+        self.info = QLabel("")
+        self.info.setWordWrap(True)
         self.clear = QPushButton("No action")
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.frame_label = QLabel("–")
+        self.play = QPushButton("Play")
+        self.play.setCheckable(True)
         row = QHBoxLayout()
         row.addWidget(self.clear)
-        row.addWidget(self.mask_label, 1)
+        row.addWidget(self.play)
+        frame_row = QHBoxLayout()
+        frame_row.addWidget(self.slider, 1)
+        frame_row.addWidget(self.frame_label)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addLayout(row)
         layout.addWidget(self.tree, 1)
+        layout.addLayout(frame_row)
+        layout.addLayout(row)
+        layout.addWidget(self.info)
         self.tree.currentItemChanged.connect(self._chosen)
         self.clear.clicked.connect(lambda: session.set_action(None))
+        self.slider.valueChanged.connect(session.set_action_frame)
+        self.play.toggled.connect(self._play_toggled)
         session.actions_changed.connect(self.rebuild)
         session.frame_changed.connect(self._frame)
         session.visibility_changed.connect(self._frame)
+        session.playing_changed.connect(self._playing)
         self._building = False
 
     def rebuild(self) -> None:
@@ -481,21 +494,16 @@ class ActionsPanel(QWidget):
             top = QTreeWidgetItem([file.name, str(len(file.actions)), ""])
             self.tree.addTopLevelItem(top)
             for action in file.actions:
-                vis = action.visibility
-                summary = ""
-                if vis:
-                    first = vis[0].mask_at(vis[0].start)
-                    summary = f"{len(vis)} cmd, {first:#010x}"
                 item = QTreeWidgetItem(
-                    [f"{action.action_id}", str(action.duration), summary]
+                    [str(action.action_id), str(action.duration), _plays(file, action)]
                 )
-                item.setData(0, _ROLE, (file, action))
+                item.setData(0, _ROLE, ("action", file, action))
                 top.addChild(item)
                 if self.session.action is not None and self.session.action[1] is action:
                     self.tree.setCurrentItem(item)
             top.setExpanded(True)
         self._building = False
-        self._frame(self.session.frame)
+        self._frame()
 
     def _chosen(
         self, item: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
@@ -508,16 +516,58 @@ class ActionsPanel(QWidget):
         if choice[0] == "preset":
             self.session.apply_mask(choice[1])
         else:
-            self.session.set_action(choice)
+            self.session.set_action((choice[1], choice[2]))
 
     def _frame(self, *_args: object) -> None:
+        action = self.session.action
+        with QSignalBlocker(self.slider):
+            if action is None:
+                self.slider.setRange(0, 0)
+                self.slider.setEnabled(False)
+                self.frame_label.setText("–")
+                self.info.setText(
+                    "Parts as set in the Parts tab; pose from the Animation tab."
+                )
+                return
+            duration = max(action[1].duration, 1)
+            self.slider.setEnabled(True)
+            self.slider.setRange(0, duration - 1)
+            self.slider.setValue(self.session.action_frame)
+            self.frame_label.setText(f"{self.session.action_frame + 1} / {duration}")
         mask = self.session.action_mask()
-        if self.session.action is None:
-            self.mask_label.setText("Parts as set in the Parts tab")
-        elif mask is None:
-            self.mask_label.setText("No visibility command at this frame")
+        if mask is None:
+            mask_text = "no visibility command at this frame"
         else:
             groups, parts = dsa.split_mask(mask)
-            self.mask_label.setText(
-                f"{mask:#010x}: groups {sorted(groups)}, parts {sorted(parts)}"
+            mask_text = (
+                f"mask {mask:#010x}: groups {sorted(groups)}, parts {sorted(parts)}"
             )
+        self.info.setText(f"{self.session.action_clip_name()}; {mask_text}")
+
+    def _play_toggled(self, on: bool) -> None:
+        if on:
+            self.session.play()
+        else:
+            self.session.stop()
+
+    def _playing(self, playing: bool) -> None:
+        with QSignalBlocker(self.play):
+            self.play.setChecked(playing)
+        self.play.setText("Pause" if playing else "Play")
+
+
+def _plays(file: dsa.DsaFile, action: dsa.Action) -> str:
+    """A short description of the clips an action plays."""
+    numbers: list[str] = []
+    for c in action.motions:
+        for seg in c.segments:
+            if 0 <= seg.resource < len(file.resources):
+                res = file.resources[seg.resource]
+                text = (
+                    f"{res.number:05d}"
+                    if not res.embedded
+                    else f"embedded {res.number}"
+                )
+                if text not in numbers:
+                    numbers.append(text)
+    return ", ".join(numbers)
