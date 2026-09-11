@@ -1,5 +1,6 @@
 """The main window: the ROM browser on the left, the viewport in the middle,
-the model panels on the right, and the menus that open and export things."""
+the model panels on the right, and the menus that open and export things.
+The export commands themselves are :class:`~dbkai.ui.exports.Exports`."""
 
 from __future__ import annotations
 
@@ -11,26 +12,20 @@ from pathlib import Path
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
-    QApplication,
     QDockWidget,
     QFileDialog,
+    QLabel,
     QMainWindow,
     QMenu,
     QMessageBox,
-    QProgressDialog,
     QTabWidget,
+    QVBoxLayout,
     QWidget,
 )
 
 from dbkai import APP_NAME, __version__
-from dbkai.export.gltf import export_clips, export_glb
-from dbkai.export.png import encode_png
-from dbkai.formats import dsa
-from dbkai.game import AssetKind
-from dbkai.model.action import action_take
-from dbkai.model.animation import BoundMotion, Clip, Take
-from dbkai.model.scene import MeshData, Model
 from dbkai.ui.asset_tree import AssetTree
+from dbkai.ui.exports import LAST_DIR_KEY, Exports
 from dbkai.ui.panels import (
     ActionsPanel,
     AnimationPanel,
@@ -49,6 +44,7 @@ from dbkai.ui.settings import (
     save_enum_setting,
     save_str_setting,
 )
+from dbkai.ui.shortcuts import ShortcutGuide, shortcut_sections
 from dbkai.ui.theme import THEME_KEY, Theme, apply_theme
 from dbkai.ui.viewport import Viewport
 
@@ -57,23 +53,25 @@ log = logging.getLogger(__name__)
 GEOMETRY_KEY = "window/geometry"
 STATE_KEY = "window/state"
 LAST_ROM_KEY = "file/last_rom"
-LAST_DIR_KEY = "file/last_dir"
 
 _THEME_ENTRIES = {
     Theme.LIGHT: "&Light",
     Theme.DARK: "&Dark",
 }
 
-#: View toggles: (option name on the session, menu label, setting key, default).
+#: View toggles: (option name on the session, menu label, key, setting key,
+#: default). The keys are bare letters, as a 3D viewer's usually are; a text
+#: box that has focus keeps them for typing.
 _VIEW_TOGGLES = [
-    ("textures", "&Textures", "view/textures", True),
-    ("vertex_colors", "Vertex &colours", "view/vertex_colors", True),
-    ("culling", "&Back-face culling", "view/culling", True),
-    ("wireframe", "&Wireframe", "view/wireframe", False),
-    ("grid", "&Grid", "view/grid", True),
-    ("bones", "&Skeleton", "view/bones", False),
+    ("textures", "&Textures", "T", "view/textures", True),
+    ("vertex_colors", "Vertex &colours", "C", "view/vertex_colors", True),
+    ("culling", "&Back-face culling", "B", "view/culling", True),
+    ("wireframe", "&Wireframe", "W", "view/wireframe", False),
+    ("grid", "&Grid", "G", "view/grid", True),
+    ("bones", "&Skeleton", "S", "view/bones", False),
 ]
 
+_ROM_FILTER = "DS ROM (*.nds);;All files (*)"
 _DSE_FILTER = "DSE files (*.dse *.dsez *.dse7);;All files (*)"
 
 
@@ -86,6 +84,7 @@ class MainWindow(QMainWindow):
         self.resize(1400, 860)
         self.session = Session(self)
         self.session.status.connect(self._status)
+        self.exports = Exports(self, self.session, self._status)
 
         self.viewport = Viewport(self.session)
         self.setCentralWidget(self.viewport)
@@ -100,15 +99,30 @@ class MainWindow(QMainWindow):
         self.actions = ActionsPanel(self.session)
         self.materials = MaterialsPanel(self.session)
         self.skeleton = SkeletonPanel(self.session)
-        tabs = QTabWidget()
-        tabs.addTab(self.parts, "Parts")
-        tabs.addTab(self.animation, "Animation")
-        tabs.addTab(self.actions, "Actions")
-        tabs.addTab(self.materials, "Materials")
-        tabs.addTab(self.skeleton, "Skeleton")
-        self.model_dock = self._dock(
-            "Model", "modelDock", tabs, Qt.DockWidgetArea.RightDockWidgetArea
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self.parts, "Parts")
+        self.tabs.addTab(self.animation, "Animation")
+        self.tabs.addTab(self.actions, "Actions")
+        self.tabs.addTab(self.materials, "Materials")
+        self.tabs.addTab(self.skeleton, "Skeleton")
+        #: The open model's name, over the tabs.
+        self.model_name = QLabel()
+        self.model_name.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
         )
+        font = self.model_name.font()
+        font.setBold(True)
+        self.model_name.setFont(font)
+        model_panel = QWidget()
+        layout = QVBoxLayout(model_panel)
+        layout.setContentsMargins(4, 4, 4, 0)
+        layout.addWidget(self.model_name)
+        layout.addWidget(self.tabs, 1)
+        self.model_dock = self._dock(
+            "Model", "modelDock", model_panel, Qt.DockWidgetArea.RightDockWidgetArea
+        )
+        self.session.model_changed.connect(self._show_model_name)
+        self._show_model_name()
 
         self.theme = self._build_menus()
         self.statusBar().showMessage("Open a ROM (File > Open ROM) or a DSE file.")
@@ -116,8 +130,6 @@ class MainWindow(QMainWindow):
             [self.assets_dock, self.model_dock], [340, 380], Qt.Orientation.Horizontal
         )
         self._restore_layout()
-        for name, _label, key, default in _VIEW_TOGGLES:
-            self.session.set_option(name, load_bool_setting(key, default))
 
     def _dock(
         self, title: str, name: str, widget: QWidget, area: Qt.DockWidgetArea
@@ -131,7 +143,9 @@ class MainWindow(QMainWindow):
     # -- menus -------------------------------------------------------------
 
     def _build_menus(self) -> QActionGroup:
+        """Fill the menu bar; returns the theme's action group."""
         bar = self.menuBar()
+        exports = self.exports
 
         file_menu = bar.addMenu("&File")
         self._action(
@@ -142,37 +156,47 @@ class MainWindow(QMainWindow):
         self._action(
             file_menu,
             "Export &glTF (current clip)…",
-            lambda: self.export_gltf(False),
+            lambda: exports.gltf(every_clip=False),
             "Ctrl+E",
         )
         self._action(
-            file_menu, "Export glTF (&all clips)…", lambda: self.export_gltf(True)
+            file_menu,
+            "Export glTF (&all clips)…",
+            lambda: exports.gltf(every_clip=True),
         )
         self._action(
-            file_menu, "Export glTF (one file per c&lip)…", self.export_gltf_per_clip
+            file_menu, "Export glTF (one file per c&lip)…", exports.gltf_per_clip
         )
-        self._action(
-            file_menu, "Export glTF (current a&ction)…", self.export_gltf_action
-        )
-        self._action(file_menu, "Export &Textures…", self.export_textures)
-        self._action(file_menu, "Extract &Everything…", self.extract_all)
+        self._action(file_menu, "Export glTF (current a&ction)…", exports.gltf_action)
+        self._action(file_menu, "Export &Textures…", exports.textures)
+        self._action(file_menu, "Extract &Everything…", exports.extract_all)
         file_menu.addSeparator()
         self._action(file_menu, "&Quit", self.close, QKeySequence.StandardKey.Quit)
 
         view_menu = bar.addMenu("&View")
-        for name, label, key, default in _VIEW_TOGGLES:
+        for name, label, shortcut, key, default in _VIEW_TOGGLES:
+            on = load_bool_setting(key, default)
+            self.session.set_option(name, on)
             action = QAction(label, self)
             action.setCheckable(True)
-            action.setChecked(load_bool_setting(key, default))
+            action.setChecked(on)
+            action.setShortcut(QKeySequence(shortcut))
             action.toggled.connect(
                 lambda on, name=name, key=key: self._toggle(name, key, on)
             )
             view_menu.addAction(action)
         view_menu.addSeparator()
         self._action(view_menu, "&Reset camera", self.viewport.reset_camera, "Home")
+        self._action(view_menu, "&Play / Pause", self.session.toggle_play, "Space")
         view_menu.addSeparator()
-        view_menu.addAction(self.assets_dock.toggleViewAction())
-        view_menu.addAction(self.model_dock.toggleViewAction())
+        for dock, label, shortcut in (
+            (self.assets_dock, "&Assets panel", "Ctrl+1"),
+            (self.model_dock, "&Model panel", "Ctrl+2"),
+        ):
+            toggle = dock.toggleViewAction()
+            toggle.setText(label)
+            toggle.setShortcut(QKeySequence(shortcut))
+            view_menu.addAction(toggle)
         view_menu.addSeparator()
         theme = exclusive(
             view_menu.addMenu("&Theme"),
@@ -182,19 +206,32 @@ class MainWindow(QMainWindow):
             self.set_theme,
         )
 
+        # Last, so the shortcut guide, which reads the menu bar, sees every
+        # other menu.
         help_menu = bar.addMenu("&Help")
-        about = QAction(f"&About {APP_NAME}", self)
-        about.triggered.connect(self.show_about)
-        help_menu.addAction(about)
+        self._action(
+            help_menu,
+            "&Shortcuts…",
+            self.show_shortcuts,
+            QKeySequence.StandardKey.HelpContents,  # F1
+        )
+        help_menu.addSeparator()
+        self._action(help_menu, f"&About {APP_NAME}", self.show_about)
         return theme
 
     def _action(
-        self, menu: QMenu, label: str, slot: Callable, shortcut=None
-    ) -> QAction:  # noqa: ANN001
+        self,
+        menu: QMenu,
+        label: str,
+        slot: Callable[[], object],
+        shortcut: QKeySequence.StandardKey | str | None = None,
+    ) -> QAction:
         action = QAction(label, self)
         if shortcut is not None:
             action.setShortcut(QKeySequence(shortcut))
-        action.triggered.connect(slot)
+        # Called with no arguments: ``triggered`` carries a ``checked`` flag,
+        # which would otherwise land in the slot's first parameter (a path).
+        action.triggered.connect(lambda: slot())
         menu.addAction(action)
         return action
 
@@ -205,6 +242,9 @@ class MainWindow(QMainWindow):
     def set_theme(self, theme: Theme) -> None:
         apply_theme(theme)
         save_enum_setting(THEME_KEY, theme)
+
+    def show_shortcuts(self) -> None:
+        ShortcutGuide(shortcut_sections(self), self).exec()
 
     def show_about(self) -> None:
         QMessageBox.about(
@@ -217,210 +257,45 @@ class MainWindow(QMainWindow):
     def _status(self, text: str) -> None:
         self.statusBar().showMessage(text)
 
+    def _show_model_name(self) -> None:
+        model = self.session.model
+        self.model_name.setText(model.name if model is not None else "No model")
+        self.model_name.setToolTip(
+            str(self.session.model_path or "") if model is not None else ""
+        )
+
     # -- opening -------------------------------------------------------------
 
     def open_rom(self, path: str | None = None) -> None:
-        if not path:
-            path, _ = QFileDialog.getOpenFileName(
-                self,
-                "Open ROM",
-                load_str_setting(LAST_DIR_KEY),
-                "DS ROM (*.nds);;All files (*)",
-            )
-        if not path:
-            return
-        try:
-            self.session.open_rom(path)
-        except Exception as exc:  # noqa: BLE001 - reported to the person
-            log.exception("opening %s", path)
-            QMessageBox.critical(self, "Cannot open ROM", f"{path}\n\n{exc}")
-            return
-        save_str_setting(LAST_ROM_KEY, str(path))
-        save_str_setting(LAST_DIR_KEY, str(Path(path).parent))
+        """Open a ROM, asking for one when no ``path`` is given."""
+        path = path or self._ask_open("Open ROM", _ROM_FILTER)
+        if path and self._open(path, self.session.open_rom, "Cannot open ROM"):
+            save_str_setting(LAST_ROM_KEY, str(path))
 
     def open_file(self, path: str | None = None) -> None:
-        if not path:
-            path, _ = QFileDialog.getOpenFileName(
-                self, "Open file", load_str_setting(LAST_DIR_KEY), _DSE_FILTER
-            )
-        if not path:
-            return
+        """Open a model or motion file, asking for one when no ``path`` is
+        given."""
+        path = path or self._ask_open("Open file", _DSE_FILTER)
+        if path:
+            self._open(path, self.session.open_file, "Cannot open file")
+
+    def _ask_open(self, title: str, filters: str) -> str:
+        path, _ = QFileDialog.getOpenFileName(
+            self, title, load_str_setting(LAST_DIR_KEY), filters
+        )
+        return path
+
+    def _open(self, path: str, opener: Callable[[str], None], failure: str) -> bool:
+        """Open ``path`` with ``opener`` and remember its folder; a failure
+        is shown under the title ``failure`` and returns ``False``."""
         try:
-            self.session.open_file(path)
-        except Exception as exc:  # noqa: BLE001
+            opener(path)
+        except Exception as exc:  # noqa: BLE001 - reported to the person
             log.exception("opening %s", path)
-            QMessageBox.critical(self, "Cannot open file", f"{path}\n\n{exc}")
-            return
+            QMessageBox.critical(self, failure, f"{path}\n\n{exc}")
+            return False
         save_str_setting(LAST_DIR_KEY, str(Path(path).parent))
-
-    # -- exporting -------------------------------------------------------------
-
-    def _current_clips(self, every: bool) -> list[tuple[BoundMotion, Clip]]:
-        s = self.session
-        if s.bound is None or s.motion is None:
-            return []
-        if every:
-            return [(s.bound, c) for c in s.motion.clips]
-        return [(s.bound, s.clip)] if s.clip is not None else []
-
-    def export_gltf(self, every_clip: bool) -> None:
-        model = self.session.model
-        if model is None:
-            QMessageBox.information(self, "Export glTF", "Load a model first.")
-            return
-        self._write_glb(
-            model,
-            self.session.visible_meshes(),
-            self._current_clips(every_clip),
-            [],
-            Path(model.name).stem,
-        )
-
-    def export_gltf_action(self) -> None:
-        """The chosen action as one animation: its poses frame by frame and
-        its part switches as node visibility, so the file carries every mesh
-        not hidden by hand."""
-        s = self.session
-        if s.model is None:
-            QMessageBox.information(self, "Export glTF", "Load a model first.")
-            return
-        if s.action is None:
-            QMessageBox.information(
-                self, "Export glTF", "Choose an action in the Actions tab first."
-            )
-            return
-        file, action = s.action
-        take = action_take(
-            s.model.skeleton,
-            file,
-            action,
-            s.game.motion_set if s.game is not None else lambda _set_id: None,
-            dsa.join_mask(*s.rest_visibility(s.model)),
-        )
-        meshes = [m for m in s.model.meshes if m.uid not in s.visibility.hidden]
-        stem = f"{Path(s.model.name).stem}__{take.name}"
-        self._write_glb(s.model, meshes, [], [take], stem)
-
-    def _write_glb(
-        self,
-        model: Model,
-        meshes: list[MeshData],
-        clips: list[tuple[BoundMotion, Clip]],
-        takes: list[Take],
-        stem: str,
-    ) -> None:
-        suggested = str(Path(load_str_setting(LAST_DIR_KEY)) / (stem + ".glb"))
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export glTF", suggested, "glTF binary (*.glb)"
-        )
-        if not path:
-            return
-        try:
-            data = export_glb(
-                model,
-                meshes,
-                clips,
-                palette=self.session.options.palette,
-                takes=takes,
-            )
-            Path(path).write_bytes(data)
-        except Exception as exc:  # noqa: BLE001
-            log.exception("exporting %s", path)
-            QMessageBox.critical(self, "Export failed", str(exc))
-            return
-        self._status(f"Wrote {path} ({len(data) // 1024} KB)")
-
-    def export_gltf_per_clip(self) -> None:
-        """One ``.glb`` per clip of the bound motion, into a chosen folder."""
-        model = self.session.model
-        if model is None:
-            QMessageBox.information(self, "Export glTF", "Load a model first.")
-            return
-        clips = self._current_clips(True)
-        if not clips:
-            QMessageBox.information(
-                self,
-                "Export glTF",
-                "Bind a motion first: the export is one file per clip.",
-            )
-            return
-        folder = QFileDialog.getExistingDirectory(
-            self, "Export one glTF per clip to", load_str_setting(LAST_DIR_KEY)
-        )
-        if not folder:
-            return
-        try:
-            written = export_clips(
-                model,
-                self.session.visible_meshes(),
-                clips,
-                folder,
-                Path(model.name).stem,
-                palette=self.session.options.palette,
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.exception("exporting clips to %s", folder)
-            QMessageBox.critical(self, "Export failed", str(exc))
-            return
-        save_str_setting(LAST_DIR_KEY, folder)
-        self._status(f"Wrote {len(written)} clip files to {folder}")
-
-    def export_textures(self) -> None:
-        model = self.session.model
-        if model is None:
-            QMessageBox.information(self, "Export textures", "Load a model first.")
-            return
-        folder = QFileDialog.getExistingDirectory(
-            self, "Export textures to", load_str_setting(LAST_DIR_KEY)
-        )
-        if not folder:
-            return
-        written = 0
-        for t in model.textures:
-            if not t.available:
-                continue
-            for p in range(t.palette_count):
-                rgba = t.rgba(p)
-                suffix = f"_p{p}" if t.palette_count > 1 else ""
-                (Path(folder) / f"{Path(t.name).stem}{suffix}.png").write_bytes(
-                    encode_png(rgba.width, rgba.height, rgba.pixels)
-                )
-                written += 1
-        self._status(f"Wrote {written} textures to {folder}")
-
-    def extract_all(self) -> None:
-        game = self.session.game
-        if game is None:
-            QMessageBox.information(self, "Extract", "Open a ROM first.")
-            return
-        folder = QFileDialog.getExistingDirectory(
-            self, "Extract everything to", load_str_setting(LAST_DIR_KEY)
-        )
-        if not folder:
-            return
-        from dbkai.cli import _export_asset
-
-        assets = [
-            a for a in game.assets if a.kind in (AssetKind.MODEL, AssetKind.TEXTURES)
-        ]
-        progress = QProgressDialog("Extracting…", "Cancel", 0, len(assets), self)
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        failed = 0
-        for i, asset in enumerate(assets):
-            progress.setValue(i)
-            progress.setLabelText(asset.name)
-            QApplication.processEvents()
-            if progress.wasCanceled():
-                break
-            try:
-                _export_asset(game, asset, Path(folder), with_motion=True)
-            except Exception:  # noqa: BLE001 - one bad file must not stop the rest
-                failed += 1
-                log.exception("extracting %s", asset.path)
-        progress.setValue(len(assets))
-        self._status(
-            f"Extracted to {folder}" + (f", {failed} failed" if failed else "")
-        )
+        return True
 
     # -- layout persistence ------------------------------------------------
 
@@ -446,11 +321,14 @@ def exclusive[E: Enum](
     current: E,
     apply: Callable[[E], None],
 ) -> QActionGroup:
-    """Fill ``menu`` with one checkable action per entry, exclusive, and put
-    ``current`` into effect.
+    """Fill ``menu`` with one checkable action per entry, exclusive, with
+    ``current`` checked; checking another calls ``apply`` with its member.
 
     "Pick exactly one" is what makes an exclusive QActionGroup the right shape:
     checking one unchecks the rest with no bookkeeping in the window.
+    ``current`` is only shown, not applied: a stored preference is already in
+    effect by the time the window is built (:func:`dbkai.app.main` applies the
+    theme first, so nothing is styled twice).
     """
     group = QActionGroup(window)
     group.setExclusive(True)
@@ -462,7 +340,4 @@ def exclusive[E: Enum](
         made.setData(member)
         group.addAction(made)
         menu.addAction(made)
-    # A stored preference has to take effect as well as show as checked; nothing
-    # else applies it, since no action was triggered to get here.
-    apply(current)
     return group

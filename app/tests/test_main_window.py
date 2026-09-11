@@ -4,11 +4,14 @@ import json
 import struct
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QKeySequence
+from PySide6.QtTest import QTest
 
 from dbkai.formats import dse
 from dbkai.model import scene
 from dbkai.model.animation import Motion
 from dbkai.ui.main_window import MainWindow
+from dbkai.ui.shortcuts import VIEWPORT_GESTURES, ShortcutGuide, shortcut_sections
 from tests.dse_fixture import build_model, build_motion
 
 
@@ -19,6 +22,71 @@ def _window(qtbot):
         scene.build(dse.parse(build_model()), "fixture"), None, None
     )
     return window
+
+
+def _activate(qtbot, window):
+    """Shortcuts only fire in the active window, which offscreen needs told."""
+    window.show()
+    window.activateWindow()
+    qtbot.waitUntil(window.isActiveWindow)
+
+
+def _menu(window, title):
+    return next(a.menu() for a in window.menuBar().actions() if a.text() == title)
+
+
+def test_the_model_dock_names_the_model(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert window.model_name.text() == "No model"
+    window.session._set_model(
+        scene.build(dse.parse(build_model()), "fixture"), None, None
+    )
+    assert window.model_name.text() == "fixture"
+
+
+def test_space_plays_and_pauses_wherever_the_focus_is(qtbot):
+    window = _window(qtbot)
+    window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
+    _activate(qtbot, window)
+    window.parts.tree.setFocus()
+    QTest.keyClick(window.parts.tree, Qt.Key.Key_Space)
+    assert window.session.playing
+    QTest.keyClick(window.parts.tree, Qt.Key.Key_Space)
+    assert not window.session.playing
+
+
+def test_view_letters_toggle_the_view_but_type_into_the_filter(qtbot):
+    window = _window(qtbot)
+    _activate(qtbot, window)
+    window.viewport.setFocus()
+    QTest.keyClick(window.viewport, Qt.Key.Key_W)
+    assert window.session.options.wireframe
+    window.assets.filter.setFocus()
+    QTest.keyClick(window.assets.filter, Qt.Key.Key_W)
+    assert window.assets.filter.text() == "w" and window.session.options.wireframe
+
+
+def test_help_shortcuts_lists_every_key_from_the_menus(qtbot):
+    window = _window(qtbot)
+    for action in _menu(window, "&Help").actions():
+        if not action.isSeparator():
+            action.trigger()  # conftest stops the guide's exec() from blocking
+    assert window.findChildren(ShortcutGuide)
+    sections = dict(shortcut_sections(window))
+    native = QKeySequence.SequenceFormat.NativeText
+    assert dict(sections["File"])["Open ROM"] == QKeySequence(
+        QKeySequence.StandardKey.Open
+    ).toString(native)
+    view = dict(sections["View"])
+    assert view["Wireframe"] == "W" and view["Play / Pause"] == "Space"
+    assert view["Assets panel"] == QKeySequence("Ctrl+1").toString(native)
+    assert "Light" not in view  # the theme entries carry no key
+    assert dict(sections["Help"])["Shortcuts"] == QKeySequence(
+        QKeySequence.StandardKey.HelpContents
+    ).toString(native)
+    assert sections["Viewport"] == list(VIEWPORT_GESTURES)
+    assert all(name and keys for rows in sections.values() for name, keys in rows)
 
 
 def test_panels_follow_the_model(qtbot):
@@ -85,20 +153,20 @@ def test_exports_write_files(qtbot, tmp_path, monkeypatch):
     window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
     target = tmp_path / "out.glb"
     monkeypatch.setattr(
-        "dbkai.ui.main_window.QFileDialog.getSaveFileName",
+        "dbkai.ui.exports.QFileDialog.getSaveFileName",
         lambda *a, **k: (str(target), ""),
     )
-    window.export_gltf(True)
+    window.exports.gltf(every_clip=True)
     data = target.read_bytes()
     assert data[:4] == b"glTF"
     json_len = struct.unpack_from("<I", data, 12)[0]
     doc = json.loads(data[20 : 20 + json_len])
     assert len(doc["animations"]) == 1
     monkeypatch.setattr(
-        "dbkai.ui.main_window.QFileDialog.getExistingDirectory",
+        "dbkai.ui.exports.QFileDialog.getExistingDirectory",
         lambda *a, **k: str(tmp_path),
     )
-    window.export_textures()
+    window.exports.textures()
     assert (tmp_path / "skin.png").exists()
 
 
@@ -106,10 +174,10 @@ def test_per_clip_export_writes_a_folder(qtbot, tmp_path, monkeypatch):
     window = _window(qtbot)
     window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
     monkeypatch.setattr(
-        "dbkai.ui.main_window.QFileDialog.getExistingDirectory",
+        "dbkai.ui.exports.QFileDialog.getExistingDirectory",
         lambda *a, **k: str(tmp_path),
     )
-    window.export_gltf_per_clip()
+    window.exports.gltf_per_clip()
     assert [p.name for p in tmp_path.iterdir()] == ["fixture__000_spin.glb"]
     assert "1 clip files" in window.statusBar().currentMessage()
 
@@ -128,8 +196,8 @@ def test_action_export_writes_the_action(qtbot, tmp_path, monkeypatch):
         suggested.append(args[2])
         return str(tmp_path / "out.glb"), ""
 
-    monkeypatch.setattr("dbkai.ui.main_window.QFileDialog.getSaveFileName", save)
-    window.export_gltf_action()
+    monkeypatch.setattr("dbkai.ui.exports.QFileDialog.getSaveFileName", save)
+    window.exports.gltf_action()
     assert suggested[0].endswith("fixture__fixture_2000.glb")
     data = (tmp_path / "out.glb").read_bytes()
     json_len = struct.unpack_from("<I", data, 12)[0]
@@ -165,3 +233,41 @@ def test_actions_panel_lists_and_selects(qtbot):
     assert panel.remove.isEnabled()
     panel.remove.click()
     assert window.session.action_sets == [] and panel.source.count() == 0
+
+
+def test_an_action_set_opened_before_any_model_lists_without_a_crash(qtbot):
+    from dbkai.formats import dsa
+    from tests.dsa_fixture import build_actions
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.session.add_action_set(dsa.parse(build_actions(), "fixture.dsa"))
+    panel = window.actions
+    assert panel.source.currentText() == "fixture.dsa"
+    assert panel.remove.isEnabled()
+
+
+def test_picking_a_clip_source_drops_the_action_in_the_actions_tab(qtbot):
+    from dbkai.formats import dsa
+    from tests.dsa_fixture import build_actions
+
+    window = _window(qtbot)
+    file = dsa.parse(build_actions(), "fixture.dsa")
+    window.session.add_action_set(file)
+    window.actions.tree.setCurrentItem(window.actions.tree.topLevelItem(0))
+    assert window.actions.slider.isEnabled()
+    window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
+    assert window.actions.tree.currentItem() is None
+    assert not window.actions.slider.isEnabled()
+
+
+def test_a_menu_command_is_called_without_the_checked_flag(qtbot, monkeypatch):
+    window = _window(qtbot)
+    asked = []
+    monkeypatch.setattr(
+        "dbkai.ui.main_window.QFileDialog.getOpenFileName",
+        lambda *a, **k: asked.append(a[1]) or ("", ""),
+    )
+    file_menu = _menu(window, "&File")
+    next(a for a in file_menu.actions() if a.text() == "Open &ROM…").trigger()
+    assert asked == ["Open ROM"]

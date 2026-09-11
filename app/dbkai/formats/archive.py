@@ -59,49 +59,14 @@ class DsaArchive:
     def __init__(self, data: bytes) -> None:
         if len(data) < _HEADER.size or data[:4] != MAGIC:
             raise ArchiveError("not a 'DSA ' archive")
-        magic, version, self.data_start, dir_count = _HEADER.unpack_from(data)
+        _magic, version, self.data_start, dir_count = _HEADER.unpack_from(data)
         if version != 1:
             raise ArchiveError(f"unsupported archive version {version}")
         self.data = data
-        dirs = [
-            _DIR.unpack_from(data, _HEADER.size + _DIR.size * i)
-            for i in range(dir_count)
-        ]
-        table = _HEADER.size + _DIR.size * dir_count
-        # The directory names sit right after the entry table, so the first
-        # name offset is where the entries stop.
-        strings = min(name for _, _, name in dirs) if dirs else table
-        entries: list[ArchiveEntry] = []
-        for first, count, name_offset in dirs:
-            directory = _cstring(data, name_offset)
-            for index in range(first, first + count):
-                pos = table + _ENTRY.size * index
-                if pos + _ENTRY.size > strings:
-                    raise ArchiveError(
-                        f"directory {directory} lists entries past the table"
-                    )
-                name_length, entry_id, unpacked, packed, offset = _ENTRY.unpack_from(
-                    data, pos
-                )
-                name = (
-                    data[offset : offset + name_length]
-                    .rstrip(b"\0")
-                    .decode("ascii", "replace")
-                )
-                entries.append(
-                    ArchiveEntry(
-                        index=index,
-                        directory=directory,
-                        name=name or f"{entry_id:08x}.bin",
-                        entry_id=entry_id,
-                        unpacked_size=unpacked,
-                        packed_size=packed,
-                        offset=offset,
-                        name_length=name_length,
-                    )
-                )
-        entries.sort(key=lambda e: e.index)
-        self.entries = entries
+        try:
+            self.entries = _list_entries(data, dir_count)
+        except struct.error as exc:
+            raise ArchiveError(f"archive tables are truncated: {exc}") from exc
 
     @cached_property
     def _by_path(self) -> dict[str, ArchiveEntry]:
@@ -118,6 +83,8 @@ class DsaArchive:
                 raise FileNotFoundError(entry)
             entry = found
         raw = self.data[entry.data_offset : entry.data_offset + entry.packed_size]
+        if len(raw) != entry.packed_size:
+            raise ArchiveError(f"{entry.path} runs past the end of the archive")
         if not entry.compressed:
             return raw
         out = lz77_decompress(raw)
@@ -129,6 +96,50 @@ class DsaArchive:
         return out
 
 
+def _list_entries(data: bytes, dir_count: int) -> list[ArchiveEntry]:
+    """Every entry the directory table lists, in entry-table order."""
+    dirs = [
+        _DIR.unpack_from(data, _HEADER.size + _DIR.size * i) for i in range(dir_count)
+    ]
+    table = _HEADER.size + _DIR.size * dir_count
+    # The directory names sit right after the entry table, so the first
+    # name offset is where the entries stop.
+    strings = min(name for _, _, name in dirs) if dirs else table
+    entries: list[ArchiveEntry] = []
+    for first, count, name_offset in dirs:
+        directory = _cstring(data, name_offset)
+        for index in range(first, first + count):
+            pos = table + _ENTRY.size * index
+            if pos + _ENTRY.size > strings:
+                raise ArchiveError(
+                    f"directory {directory} lists entries past the table"
+                )
+            name_length, entry_id, unpacked, packed, offset = _ENTRY.unpack_from(
+                data, pos
+            )
+            name = (
+                data[offset : offset + name_length]
+                .rstrip(b"\0")
+                .decode("ascii", "replace")
+            )
+            entries.append(
+                ArchiveEntry(
+                    index=index,
+                    directory=directory,
+                    name=name or f"{entry_id:08x}.bin",
+                    entry_id=entry_id,
+                    unpacked_size=unpacked,
+                    packed_size=packed,
+                    offset=offset,
+                    name_length=name_length,
+                )
+            )
+    entries.sort(key=lambda e: e.index)
+    return entries
+
+
 def _cstring(data: bytes, offset: int) -> str:
-    end = data.index(b"\0", offset)
+    end = data.find(b"\0", offset)
+    if end < 0:
+        raise ArchiveError(f"string at {offset:#x} runs past the end of the archive")
     return data[offset:end].decode("ascii", "replace")

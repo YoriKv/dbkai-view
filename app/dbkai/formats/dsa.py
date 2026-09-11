@@ -15,12 +15,13 @@ is relative to the command area at header offset ``0x14``.
 from __future__ import annotations
 
 import struct
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from enum import IntEnum
 
 MAGIC = b"DSA\0"
 
-_HEADER = struct.Struct("<4sBBH6HIIII")
+_HEADER = struct.Struct("<4sHH6HIIII")
 _RESOURCE = struct.Struct("<HHiIiI")
 
 
@@ -214,34 +215,33 @@ class Action:
     def motion_at(self, frame: int) -> tuple[int, int] | None:
         """(resource index, take frame) of the clip playing at ``frame``, or
         ``None`` when no motion command covers it."""
-        best: MotionCommand | None = None
-        for c in self.motions:
-            if c.active and not c.conditional and c.covers(frame):
-                if best is None or c.start >= best.start:
-                    best = c
-        if best is None:
-            return None
-        found = best.segment_at(frame)
+        best = _in_force(self.motions, frame)
+        found = None if best is None else best.segment_at(frame)
         return None if found is None else (found[0].resource, found[1])
 
     def mask_at(self, frame: int) -> int | None:
         """The draw mask in force at ``frame``: the latest visibility command
         covering it, or ``None`` when none does (the mask is then whatever
         the previous action left)."""
-        best: VisibilityCommand | None = None
-        for c in self.visibility:
-            if c.active and not c.conditional and c.covers(frame):
-                if best is None or c.start >= best.start:
-                    best = c
+        best = _in_force(self.visibility, frame)
         return None if best is None else best.mask_at(frame)
 
     def scheme_at(self, frame: int) -> int | None:
-        best: ColorCommand | None = None
-        for c in self.colors:
-            if c.active and not c.conditional and c.covers(frame):
-                if best is None or c.start >= best.start:
-                    best = c
+        """The colour scheme in force at ``frame``, or ``None`` when no colour
+        command covers it."""
+        best = _in_force(self.colors, frame)
         return None if best is None else best.scheme
+
+
+def _in_force[C: Command](commands: list[C], frame: int) -> C | None:
+    """Of the active, unconditional ``commands`` covering ``frame``, the one
+    that started last; on a tie, the later one in the chain."""
+    best: C | None = None
+    for c in commands:
+        if c.active and not c.conditional and c.covers(frame):
+            if best is None or c.start >= best.start:
+                best = c
+    return best
 
 
 @dataclass
@@ -250,7 +250,7 @@ class ActionSet:
     actions: list[Action]
     resources: list[Resource]
     motion_sets: list[int]
-    raw_kind: int = 0
+    version: int = 0  # the u16 at 0x04, 0x1101 in every shipped file
 
     def action_by_id(self, action_id: int) -> Action | None:
         for a in self.actions:
@@ -260,6 +260,7 @@ class ActionSet:
 
 
 def is_dsa(data: bytes) -> bool:
+    """Whether ``data`` starts like an action set."""
     return len(data) >= _HEADER.size and data[:4] == MAGIC
 
 
@@ -271,6 +272,8 @@ def split_mask(mask: int) -> tuple[set[int], set[int]]:
 
 
 def join_mask(groups: set[int], parts: set[int]) -> int:
+    """The draw mask enabling ``groups`` and ``parts``; the inverse of
+    :func:`split_mask`."""
     mask = 0
     for g in groups:
         mask |= 1 << g
@@ -280,26 +283,33 @@ def join_mask(groups: set[int], parts: set[int]) -> int:
 
 
 def _track(data: bytes, offset: int) -> Track | None:
+    """The track at ``offset``, or ``None`` when it does not fit the file."""
     if offset < 0 or offset + 4 > len(data):
         return None
     flags, count = data[offset], data[offset + 1]
+    key = "B" if flags & 1 else "H"
+    if offset + 4 + count * (2 + struct.calcsize(key)) > len(data):
+        return None
     period = struct.unpack_from("<h", data, offset + 2)[0]
     values = struct.unpack_from(f"<{count}H", data, offset + 4)
-    keys_at = offset + 4 + 2 * count
-    if flags & 1:
-        keys = struct.unpack_from(f"<{count}B", data, keys_at)
-    else:
-        keys = struct.unpack_from(f"<{count}H", data, keys_at)
+    keys = struct.unpack_from(f"<{count}{key}", data, offset + 4 + 2 * count)
     return Track(tuple(zip(keys, values, strict=True)), bool(flags & 2), period)
 
 
 def parse(data: bytes, name: str = "") -> ActionSet:
+    """Parse a whole action set held in ``data``; ``name`` labels it."""
     if not is_dsa(data):
         raise DsaError("not a DSA file")
+    try:
+        return _parse(data, name)
+    except struct.error as exc:
+        raise DsaError(f"action set tables are truncated: {exc}") from exc
+
+
+def _parse(data: bytes, name: str) -> ActionSet:
     (
         _magic,
-        raw_kind,
-        flags7,
+        version,
         header_size,
         n_actions,
         n_records,
@@ -308,7 +318,7 @@ def parse(data: bytes, name: str = "") -> ActionSet:
         n_sets,
         _pad,
         commands_off,
-        tail_off,
+        commands_size,
         _z,
         _x400,
     ) = _HEADER.unpack_from(data)
@@ -329,6 +339,13 @@ def parse(data: bytes, name: str = "") -> ActionSet:
         resources.append(Resource(i, number, set_id, offset, rflags))
     motion_sets = list(struct.unpack_from(f"<{n_sets}I", data, t5))
     base = commands_off
+    # The command area runs ``commands_size`` bytes from ``base``: to the end
+    # of the file in every shipped set. Each record's payload runs to the
+    # next record in the area, the last one's to the area's end.
+    area_end = base + commands_size
+    if not base < area_end <= len(data):
+        area_end = len(data)
+    starts = sorted({base + o for o in table})
 
     def record(index: int) -> tuple[int, int, int, int, int, int, int]:
         p = base + table[index]
@@ -339,17 +356,13 @@ def parse(data: bytes, name: str = "") -> ActionSet:
         )
         return p, op, fl, cond, start, dur, nxt
 
-    def record_end(index: int) -> int:
-        later = [o for o in table if o > table[index]]
-        return base + (
-            min(later)
-            if later
-            else (tail_off - base if tail_off > base else len(data) - base)
-        )
+    def record_end(p: int) -> int:
+        later = bisect_right(starts, p)
+        return starts[later] if later < len(starts) else area_end
 
     def build(index: int) -> Command:
         p, op, fl, cond, start, dur, nxt = record(index)
-        payload = data[p + 16 : record_end(index)]
+        payload = data[p + 16 : record_end(p)]
         common = dict(
             index=index,
             op=op,
@@ -407,4 +420,4 @@ def parse(data: bytes, name: str = "") -> ActionSet:
             chain.append(cmd)
             nxt = record(nxt)[6]
         actions.append(Action(a, action_id, dur, tuple(chain)))
-    return ActionSet(name, actions, resources, motion_sets, raw_kind | (flags7 << 8))
+    return ActionSet(name, actions, resources, motion_sets, version)

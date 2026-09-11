@@ -102,7 +102,7 @@ def build_actions() -> bytes:
         1,
         0,
         commands_off,
-        commands_off + len(blob),
+        len(blob) + 16,  # the command area's size: it runs to the file's end
         0,
         0x400,
     )
@@ -111,10 +111,8 @@ def build_actions() -> bytes:
 
 def build_presets() -> bytes:
     """The visibility preset table: (state id, mask, -1, -1) records."""
-    import struct as _struct
-
     rows = [(10000, 0x802300FF), (10005, 0x8023033F), (11000, 0x804300FF)]
-    header = _struct.pack(
+    header = struct.pack(
         "<4sHHBBBBIHHH",
         b"PRM\0",
         0x7755,
@@ -129,5 +127,5 @@ def build_presets() -> bytes:
         0x10,
     )
     header += b"\xff" * (0x20 - len(header))
-    body = b"".join(_struct.pack("<IIii", s, m, -1, -1) for s, m in rows)
+    body = b"".join(struct.pack("<IIii", s, m, -1, -1) for s, m in rows)
     return header + body

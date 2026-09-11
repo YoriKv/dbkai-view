@@ -4,8 +4,15 @@ The package is laid out so that only :mod:`dbkai.ui` (and the :mod:`dbkai.app`
 bootstrap) imports Qt. Every other module stays Qt-free, so the extractor side
 is testable and reusable headless.
 
+- :mod:`dbkai.nds` - the cartridge: header and NitroFS file system.
+- :mod:`dbkai.formats` - the game's file formats, parsed into plain data.
+- :mod:`dbkai.model` - models, skeletons, motions and actions, ready to pose.
+- :mod:`dbkai.export` - glTF and PNG writers.
+- :mod:`dbkai.game` - one ROM's assets, catalogued and related.
+- :mod:`dbkai.extract` - writing assets to disk, for the CLI and the viewer.
+- :mod:`dbkai.cli` - the headless command line, ``python -m dbkai.cli``.
 - :mod:`dbkai.app` - QApplication bootstrap and entry point.
-- :mod:`dbkai.ui` - the Qt front end: main window and theme.
+- :mod:`dbkai.ui` - the Qt front end: window, session, viewport and panels.
 - :mod:`dbkai.resources` - bundled read-only assets, resolved so they survive a
   frozen release build.
 """
@@ -24,7 +31,7 @@ APP_NAME = "DBKai"
 APP_ID = "dbkai"
 
 #: Turns on the package's own logging, which is otherwise silent: set it to a
-#: level name (``DEBUG``, ``INFO``) or to ``1`` for ``DEBUG``.
+#: level name (``DEBUG``, ``INFO``) or to ``1`` for ``DEBUG``; ``0`` leaves it off.
 DEBUG_ENV = "DBKAI_DEBUG"
 
 
@@ -40,10 +47,10 @@ def configure_logging(value: str | None = None) -> int | None:
     import os
 
     raw = (value if value is not None else os.environ.get(DEBUG_ENV, "")).strip()
-    if not raw:
+    if raw.lower() in {"", "0", "false", "no", "off"}:
         return None
     # A bare truthy value means "as much as there is"; a name means that level.
-    level = logging.DEBUG if raw in {"1", "true", "yes"} else raw.upper()
+    level = logging.DEBUG if raw.lower() in {"1", "true", "yes", "on"} else raw.upper()
     logger = logging.getLogger(__name__)
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))

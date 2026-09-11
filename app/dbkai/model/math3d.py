@@ -14,22 +14,6 @@ import numpy as np
 Mat4 = np.ndarray
 
 
-def identity() -> Mat4:
-    return np.eye(4)
-
-
-def translation(t: Sequence[float]) -> Mat4:
-    m = np.eye(4)
-    m[:3, 3] = t
-    return m
-
-
-def scale(s: float | Sequence[float]) -> Mat4:
-    m = np.eye(4)
-    m[0, 0], m[1, 1], m[2, 2] = (s, s, s) if np.isscalar(s) else s
-    return m
-
-
 def quat_to_matrix(q: Sequence[float]) -> Mat4:
     """Rotation matrix of the unit quaternion ``(x, y, z, w)``. The quaternion
     is normalised first, since the files store it in 12 bits."""
@@ -51,9 +35,9 @@ def quat_to_matrix(q: Sequence[float]) -> Mat4:
     return m
 
 
-def matrix_to_quat(m: Mat4) -> tuple[float, float, float, float]:
-    """Unit quaternion ``(x, y, z, w)`` of the rotation part of ``m``, which
-    must be orthonormal (no scale)."""
+def matrix_to_quat(m: np.ndarray) -> tuple[float, float, float, float]:
+    """Unit quaternion ``(x, y, z, w)`` of the rotation part of ``m`` (its
+    top-left 3x3, so a 3x3 or a 4x4), which must be orthonormal (no scale)."""
     r = m[:3, :3]
     t = np.trace(r)
     if t > 0:
@@ -107,7 +91,8 @@ def transform_points(m: Mat4, points: np.ndarray) -> np.ndarray:
 def decompose(
     m: Mat4,
 ) -> tuple[np.ndarray, tuple[float, float, float, float], np.ndarray]:
-    """Translation, rotation quaternion and scale of an affine matrix."""
+    """Translation, rotation quaternion and scale of an affine matrix, such
+    that ``m = T @ R @ S``. A mirroring matrix gets a negative x scale."""
     t = m[:3, 3].copy()
     r = m[:3, :3].copy()
     s = np.linalg.norm(r, axis=0)
@@ -116,8 +101,4 @@ def decompose(
     if np.linalg.det(r) < 0:
         s[0] = -s[0]
         r[:, 0] = -r[:, 0]
-    return (
-        t,
-        matrix_to_quat(np.block([[r, np.zeros((3, 1))], [np.zeros((1, 3)), 1]])),
-        s,
-    )
+    return t, matrix_to_quat(r), s

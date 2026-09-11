@@ -16,14 +16,17 @@ from dbkai.ui.settings import (
     load_bool_setting,
     load_bytes_setting,
     load_int_setting,
+    load_str_setting,
     save_bool_setting,
     save_bytes_setting,
+    save_str_setting,
     settings,
 )
 
 FLAG = "test/flag"
 COUNT = "test/count"
 BLOB = "test/blob"
+TEXT = "test/text"
 
 
 def from_file(tmp_path, monkeypatch, text: str) -> None:
@@ -95,3 +98,18 @@ def test_the_suite_is_not_working_on_the_real_preference_store():
 
 def test_the_suite_uses_the_same_kind_of_store_the_app_ships():
     assert settings().format() == QSettings(APP_ID, APP_ID).format()
+
+
+def test_text_with_an_unquoted_comma_is_the_text(tmp_path, monkeypatch):
+    # INI reads an unquoted comma as a list separator; a hand-edited path must
+    # still come back as the path, not as a list's repr.
+    from_file(tmp_path, monkeypatch, "[test]\ntext=/games/DB, Kai\n")
+
+    assert load_str_setting(TEXT) == "/games/DB, Kai"
+
+
+def test_text_with_a_comma_survives_the_store_the_app_uses():
+    save_str_setting(TEXT, "/games/DB, Kai")
+    settings().sync()
+
+    assert load_str_setting(TEXT) == "/games/DB, Kai"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -21,13 +22,18 @@ from dbkai.ui.viewport import request_surface_format
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point for both ``dbkai`` and ``python -m dbkai``."""
+    """Entry point for both ``dbkai`` and ``python -m dbkai``.
+
+    ``argv`` is the whole command line, program name first, as in
+    :data:`sys.argv` (the default).
+    """
+    argv = argv if argv is not None else sys.argv
     # Before anything that might log, so the first load is not the one missed.
     configure_logging()
     # The viewport's OpenGL version has to be asked for before the application
     # exists; the default format is read when the first context is made.
     request_surface_format()
-    app = QApplication(argv if argv is not None else sys.argv)
+    app = QApplication(argv)
     app.setApplicationName(APP_ID)
     app.setApplicationDisplayName(APP_NAME)
     app.setApplicationVersion(__version__)
@@ -47,10 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     window = MainWindow()
     window.show()
     # A ROM named on the command line, else the one opened last time.
-    args = [
-        a for a in (argv if argv is not None else sys.argv[1:]) if not a.startswith("-")
-    ]
-    path = args[0] if args else load_str_setting(LAST_ROM_KEY)
+    path = named_file(argv) or load_str_setting(LAST_ROM_KEY)
     if path and Path(path).is_file():
         if path.lower().endswith(".nds"):
             window.open_rom(path)
@@ -60,16 +63,21 @@ def main(argv: list[str] | None = None) -> int:
     return app.exec()
 
 
+def named_file(argv: list[str]) -> str | None:
+    """The first argument after the program name that is not an option."""
+    return next((a for a in argv[1:] if not a.startswith("-")), None)
+
+
 #: Set to a PNG path to have the app load ``DBKAI_ASSET`` (an asset path in the
 #: ROM), grab the viewport after a moment, write it there and quit. A hook for
 #: checking rendering from a script; it does nothing in normal use.
+#: ``DBKAI_MOTION``, ``DBKAI_ACTION``, ``DBKAI_FRAME`` and ``DBKAI_CAMERA`` set
+#: the scene up first -- docs/app/viewer.md.
 SCREENSHOT_ENV = "DBKAI_SCREENSHOT"
 ASSET_ENV = "DBKAI_ASSET"
 
 
 def _install_screenshot_hook(app: QApplication, window: MainWindow) -> None:
-    import os
-
     target = os.environ.get(SCREENSHOT_ENV)
     if not target:
         return

@@ -82,8 +82,15 @@ class Session(QObject):
         self.options = ViewOptions()
         #: The action sets that apply to the model, and the chosen action.
         self.action_sets: list[dsa.ActionSet] = []
+        #: Names of the sets found for the model, as opposed to added by hand.
+        self.own_action_sets: set[str] = set()
         self.action: tuple[dsa.ActionSet, dsa.Action] | None = None
         self.action_frame: int = 0
+        #: The state id of the chosen visibility preset, the Actions tab's
+        #: other kind of choice; ``None`` when none is, or an action is.
+        self.preset: int | None = None
+        #: The palette to go back to when the chosen action is left.
+        self._palette_before_action = 0
         self._timer = QTimer(self)
         self._timer.setInterval(1000 // FRAMES_PER_SECOND)
         self._timer.timeout.connect(self._tick)
@@ -94,9 +101,14 @@ class Session(QObject):
     # -- opening things -------------------------------------------------------
 
     def open_rom(self, path: str | Path) -> None:
+        """Open the ROM at ``path``. A model loaded from the previous ROM goes
+        with it; one opened from a file stays."""
         path = Path(path)
-        self.game = GameData.open(path)
+        game = GameData.open(path)
+        self.game = game
         self.game_path = path
+        if self.asset is not None:
+            self._set_model(None, None, None)
         self.game_changed.emit()
         self.status.emit(f"{path.name}: {len(self.game.assets)} assets")
 
@@ -129,22 +141,32 @@ class Session(QObject):
             return
         self._set_model(self.game.load_model(asset), asset, None)
 
-    def _set_model(self, model: Model, asset: Asset | None, path: Path | None) -> None:
+    def _set_model(
+        self, model: Model | None, asset: Asset | None, path: Path | None
+    ) -> None:
+        """Show ``model`` with everything reset to its defaults; ``None``
+        empties the view."""
         self.stop()
         self.model = model
         self.asset = asset
         self.model_path = path
-        self.visibility = Visibility(*self.rest_visibility(model), set())
+        self.visibility = (
+            Visibility(*self.rest_visibility(model), set())
+            if model is not None
+            else Visibility()
+        )
         self.motion = None
         self.motion_name = ""
         self.bound = None
         self.clip = None
         self.frame = 0
         self.action_sets = []
-        self.own_action_sets: set[str] = set()
+        self.own_action_sets = set()
+        self.action = None
+        self.action_frame = 0
+        self.preset = None
         self._palette_before_action = 0
         self.set_option("palette", 0)  # an action's colour scheme does not carry over
-        self.action = None
         if self.game is not None and asset is not None:
             for a in self.game.action_sets_for(asset):
                 try:
@@ -156,6 +178,8 @@ class Session(QObject):
         self.motion_changed.emit()
         self.visibility_changed.emit()
         self.actions_changed.emit()
+        if model is None:
+            return
         self.status.emit(
             f"{model.name}: {len(model.meshes)} meshes, "
             f"{sum(m.vertex_count for m in model.meshes)} vertices, "
@@ -180,8 +204,10 @@ class Session(QObject):
     # -- motion ---------------------------------------------------------------
 
     def set_motion(self, motion: Motion | None) -> None:
+        """Bind ``motion`` to the model at its first clip; ``None`` shows the
+        bind pose. Drops the chosen action."""
         self.stop()
-        self.action = None
+        self._drop_action()
         self.motion = motion
         self.motion_name = motion.name if motion else ""
         self.bound = None
@@ -196,7 +222,8 @@ class Session(QObject):
         self.frame_changed.emit(self.frame)
 
     def set_clip(self, clip: Clip | None) -> None:
-        self.action = None
+        """Show ``clip`` from its first frame. Drops the chosen action."""
+        self._drop_action()
         self.clip = clip
         self.frame = clip.start if clip else 0
         self.motion_changed.emit()
@@ -218,6 +245,9 @@ class Session(QObject):
         return self.frame - (self.clip.start if self.clip else 0)
 
     def set_clip_frame(self, index: int) -> None:
+        """Scrub the clip to its ``index``-th frame. Drops the chosen action,
+        which would otherwise pose over the scrubbed frame."""
+        self._drop_action()
         self.set_frame(index + (self.clip.start if self.clip else 0))
 
     def play(self, from_start: bool = False) -> None:
@@ -242,6 +272,20 @@ class Session(QObject):
     @property
     def playing(self) -> bool:
         return self._timer.isActive()
+
+    def toggle_play(self) -> None:
+        """Pause a running playback, or resume a paused one where it stands.
+        A playback that ran to its last frame and stopped there starts over,
+        since resuming it would only stop it again."""
+        if self.playing:
+            self.stop()
+        else:
+            self.play(from_start=self._at_last_frame())
+
+    def _at_last_frame(self) -> bool:
+        if self.action is not None:
+            return self.action_frame >= self.action[1].duration - 1
+        return self.clip is not None and self.frame >= self.clip.end - 1
 
     def _tick(self) -> None:
         if self.action is not None:
@@ -318,17 +362,57 @@ class Session(QObject):
         keep_playing = self.playing and choice is not None
         self.stop()
         if self.action is not None:
-            # Leaving an action undoes the colour scheme it chose.
-            self.set_option("palette", self._palette_before_action)
-        if choice is not None and self.action is None:
+            self._undo_scheme()
+        elif choice is not None:
             self._palette_before_action = self.options.palette
         self.action = choice
         self.action_frame = 0
+        self.preset = None
         self.actions_changed.emit()
         if choice is not None:
             self.set_action_frame(0)
         if keep_playing:
             self.play()
+
+    def set_preset(self, state: int | None) -> None:
+        """Choose a visibility preset of the game's table by its state id,
+        the way an action is chosen: it shows what the preset enables and
+        stays the chosen one until the parts are set some other way. ``None``
+        forgets it, showing what it left."""
+        if state is None:
+            self._leave_preset()
+            return
+        if self.model is None or self.game is None:
+            return
+        mask = self.game.visibility_presets[state]
+        if self.action is not None:  # leave it, as set_action(None) would
+            self.stop()
+            self._undo_scheme()
+            self.action = None
+            self.action_frame = 0
+        self.preset = state
+        self._show_mask(mask)
+        self.actions_changed.emit()
+
+    def _leave_preset(self) -> None:
+        """Forget the chosen preset, when the parts are set some other way."""
+        if self.preset is None:
+            return
+        self.preset = None
+        self.actions_changed.emit()
+
+    def _drop_action(self) -> None:
+        """Forget the chosen action, when the pose is chosen some other way."""
+        if self.action is None:
+            return
+        self._undo_scheme()
+        self.action = None
+        self.action_frame = 0
+        self.actions_changed.emit()
+
+    def _undo_scheme(self) -> None:
+        """Leaving an action undoes the colour scheme it chose."""
+        self.set_option("palette", self._palette_before_action)
 
     def set_action_frame(self, frame: int) -> None:
         if self.action is None:
@@ -422,10 +506,12 @@ class Session(QObject):
     def set_group(self, group: int, shown: bool) -> None:
         _toggle(self.visibility.groups, group, shown)
         self.visibility_changed.emit()
+        self._leave_preset()
 
     def set_part(self, part: int, shown: bool) -> None:
         _toggle(self.visibility.parts, part, shown)
         self.visibility_changed.emit()
+        self._leave_preset()
 
     def set_mesh_hidden(self, uid: int, hidden: bool) -> None:
         """Hide one drawable batch, by its ``MeshData.uid``."""
@@ -433,9 +519,12 @@ class Session(QObject):
         self.visibility_changed.emit()
 
     def rest_visibility(self, model: Model) -> tuple[set[int], set[int]]:
-        """The (groups, parts) of the game's rest preset, or everything when
-        no ROM is open to read the preset table from."""
-        mask = self.game.rest_mask() if self.game is not None else None
+        """The (groups, parts) of the game's rest preset for a fighter from
+        the open ROM, everything for any other model (see
+        :meth:`GameData.rest_mask`)."""
+        mask = None
+        if self.game is not None and self.asset is not None:
+            mask = self.game.rest_mask(self.asset)
         return model.rest_visibility(mask)
 
     def reset_visibility(self) -> None:
@@ -451,11 +540,15 @@ class Session(QObject):
             self.visibility_changed.emit()
 
     def apply_mask(self, mask: int) -> None:
-        """Show exactly what a draw mask enables (a preset, say)."""
+        """Show exactly what a draw mask enables."""
         if self.model is not None:
             self.set_action(None)
-            self.visibility = Visibility(*self.model.visibility_from_mask(mask), set())
-            self.visibility_changed.emit()
+            self._show_mask(mask)
+
+    def _show_mask(self, mask: int) -> None:
+        assert self.model is not None
+        self.visibility = Visibility(*self.model.visibility_from_mask(mask), set())
+        self.visibility_changed.emit()
 
     def set_option(self, name: str, value: object) -> None:
         if getattr(self.options, name) != value:

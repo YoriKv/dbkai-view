@@ -4,8 +4,9 @@ Environment, tooling and test setup.
 
 ## Python, uv and the two venvs
 
-**Python 3.12** (`.python-version`), managed with `uv`. The app is a console
-script in `pyproject.toml`: `uv run dbkai`.
+**Python 3.12** (`.python-version`), managed with `uv`. The viewer is a
+console script in `pyproject.toml`: `uv run dbkai`. The headless extractor is
+`uv run python -m dbkai.cli` (`--help` lists its commands).
 
 The checkout keeps **one venv per OS, side by side**:
 
@@ -126,8 +127,9 @@ python3 packaging/build.py -a    # the release build, locally, for this OS
 ```
 
 - **Write the notes first.** `release.sh` refuses to run unless `CHANGELOG.md`
-  has a `## vX.Y.Z - unreleased` section for the version it is about to cut.
-  That section becomes the release body, and the script stamps its date.
+  has a `## vX.Y.Z` section for the version it is about to cut, normally
+  headed `## vX.Y.Z - unreleased`. That section becomes the release body, and
+  the script replaces `unreleased` with the date.
 - **`__version__` in `app/dbkai/__init__.py` is the only version.**
   `pyproject.toml` reads it; `release.sh` bumps it.
 - **`packaging/build.py` is the whole build recipe**; the workflow only calls

@@ -25,16 +25,16 @@ class TextureFormat(IntEnum):
 
     @property
     def bits_per_texel(self) -> int:
-        return {1: 8, 2: 2, 3: 4, 4: 8, 5: 2, 6: 8, 7: 16}[self.value]
+        return {0: 0, 1: 8, 2: 2, 3: 4, 4: 8, 5: 2, 6: 8, 7: 16}[self.value]
 
     @property
     def palette_colors(self) -> int:
         """Colours one palette of this format spans (0 for direct colour)."""
-        return {1: 32, 2: 4, 3: 16, 4: 256, 5: 0, 6: 8, 7: 0}[self.value]
+        return {0: 0, 1: 32, 2: 4, 3: 16, 4: 256, 5: 0, 6: 8, 7: 0}[self.value]
 
 
 class TextureError(ValueError):
-    pass
+    """The texels cannot be decoded as the format and size given."""
 
 
 @dataclass(frozen=True)

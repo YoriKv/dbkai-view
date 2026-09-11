@@ -79,6 +79,12 @@ collars, shoulders, elbows and hands under the chest and hips, legs, knees
 and feet under `root`; accessory bones (`mantle_s1`, `hair_skin1`, `skart_s`)
 are extra roots at the origin.
 
+The inverse bind matrix is not always a pure rotation and translation: a few
+props and stage pieces bind a bone with a scale
+(`nt_540003_bardock_finalspirits_planet` at 10×) or a mirror
+(`500000_ground`, a negative x scale). The bind pose and the glTF export keep
+it.
+
 ## Meshes
 
 Mesh table A (16 bytes per mesh, at `R(1)`):

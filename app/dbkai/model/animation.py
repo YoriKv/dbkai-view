@@ -1,7 +1,7 @@
 """Motion data bound to a model's skeleton.
 
 A motion file (``sm_*.dse``, or a single-motion ``.dse``) carries its own bone
-list; a model's bones are matched to it by name hash, then by name. A bone
+list; a model's bones are matched to it by name, then by name hash. A bone
 with no counterpart keeps its bind pose.
 """
 

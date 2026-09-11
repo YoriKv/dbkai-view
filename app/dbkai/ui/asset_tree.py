@@ -1,11 +1,14 @@
-"""The ROM browser: every model, motion and texture set in the cartridge, as
-a tree of its paths, with a filter box."""
+"""The ROM browser: every model, motion, texture set and action set in the
+cartridge, as a tree of its paths, with a filter box."""
 
 from __future__ import annotations
+
+import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QLineEdit,
+    QMessageBox,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -14,6 +17,8 @@ from PySide6.QtWidgets import (
 
 from dbkai.game import Asset
 from dbkai.ui.session import Session
+
+log = logging.getLogger(__name__)
 
 _ASSET_ROLE = Qt.ItemDataRole.UserRole
 
@@ -82,8 +87,13 @@ class AssetTree(QWidget):
 
     def _activated(self, item: QTreeWidgetItem, _column: int) -> None:
         asset = item.data(0, _ASSET_ROLE)
-        if asset is not None:
+        if asset is None:
+            return
+        try:
             self.session.load_asset(asset)
+        except Exception as exc:  # noqa: BLE001 - reported to the person
+            log.exception("loading %s", asset.path)
+            QMessageBox.critical(self, "Cannot open asset", f"{asset.path}\n\n{exc}")
 
     def select_asset(self, asset: Asset) -> None:
         for item, a in self._items:

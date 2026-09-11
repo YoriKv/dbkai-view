@@ -13,19 +13,18 @@ from dbkai.model.math3d import Mat4
 
 @dataclass(frozen=True)
 class LocalPose:
-    """One bone's transform relative to its parent."""
+    """One bone's transform relative to its parent, ``T @ R @ S``. A motion
+    frame has no scale; a bind pose can (a few props scale a bone)."""
 
     rotation: tuple[float, float, float, float]  # x, y, z, w
     translation: tuple[float, float, float]
+    scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
 
     def matrix(self) -> Mat4:
         m = math3d.quat_to_matrix(self.rotation)
+        m[:3, :3] *= self.scale
         m[:3, 3] = self.translation
         return m
-
-    @classmethod
-    def identity(cls) -> LocalPose:
-        return cls((0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 0.0))
 
 
 @dataclass
@@ -35,7 +34,8 @@ class Skeleton:
     ``inverse_bind[i]`` maps model space into bone *i*'s space, exactly as the
     file stores it; ``bind_world`` is its inverse and ``bind_local`` the same
     relative to the parent, which is what a bone with no animation track
-    keeps. Every parent precedes its children in ``order``.
+    keeps; :meth:`bind_pose` is ``bind_local`` as poses. Every parent
+    precedes its children in ``order``.
     """
 
     names: list[str]
@@ -46,6 +46,7 @@ class Skeleton:
     bind_world: np.ndarray = field(init=False)
     bind_local: np.ndarray = field(init=False)
     order: list[int] = field(init=False)
+    _bind_pose: list[LocalPose] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         n = len(self.names)
@@ -62,6 +63,7 @@ class Skeleton:
                 else self.inverse_bind[p] @ self.bind_world[i]
             )
         self.bind_local = local
+        self._bind_pose = [_pose_of(m) for m in local]
 
     def __len__(self) -> int:
         return len(self.names)
@@ -80,12 +82,8 @@ class Skeleton:
 
     def bind_pose(self) -> list[LocalPose]:
         """The bind pose as local transforms, for a bone the animation leaves
-        alone."""
-        out = []
-        for i in range(len(self)):
-            t, q, _s = math3d.decompose(self.bind_local[i])
-            out.append(LocalPose(q, tuple(float(v) for v in t)))
-        return out
+        alone. Worked out once: a player asks for it every frame."""
+        return list(self._bind_pose)
 
     def world_matrices(self, local: list[Mat4] | np.ndarray) -> np.ndarray:
         """Forward kinematics: the world matrix of every bone from its local
@@ -103,6 +101,11 @@ class Skeleton:
 
     def children(self, bone: int) -> list[int]:
         return [i for i, p in enumerate(self.parents) if p == bone]
+
+
+def _pose_of(local: Mat4) -> LocalPose:
+    t, q, s = math3d.decompose(local)
+    return LocalPose(q, tuple(t.tolist()), tuple(s.tolist()))
 
 
 def _invert(m: Mat4) -> Mat4:

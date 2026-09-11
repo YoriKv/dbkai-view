@@ -162,13 +162,19 @@ def save_bytes_setting(key: str, value: QByteArray) -> None:
 def load_str_setting(key: str, default: str = "") -> str:
     """Read ``key`` as text, falling back to ``default``.
 
-    The one accessor whose type the store already agrees with, and it exists
-    anyway: reading a preference through ``settings().value()`` is the habit
-    this module is here to prevent, and one exception would be the one people
-    copy.
+    Text is what the store keeps, but not always what it hands back: an INI
+    value with an unquoted comma - a hand-edited path such as ``C:/DB, Kai`` -
+    reads back as a list of strings, which is joined again here. Qt quotes such
+    a value when it writes one itself. And reading a preference through
+    ``settings().value()`` is the habit this module is here to prevent, so text
+    gets an accessor too.
     """
     stored = settings().value(key)
-    return default if stored is None else str(stored)
+    if stored is None:
+        return default
+    if isinstance(stored, list):
+        return ", ".join(str(part) for part in stored)
+    return str(stored)
 
 
 def save_str_setting(key: str, value: str) -> None:

@@ -5,6 +5,7 @@ texture, and a one-frame rest pose."""
 
 from __future__ import annotations
 
+import math
 import struct
 
 HEADER_SIZE = 0x64
@@ -233,8 +234,6 @@ def build_motion(frames: int = 3) -> bytes:
     while len(body) % 4:
         body += b"\0"
     frames_abs = HEADER_SIZE + len(body)
-    import math
-
     poses = b""
     for f in range(frames + 1):
         angle = math.pi / 2 * min(f, frames - 1) / max(frames - 1, 1)

@@ -141,31 +141,6 @@ class _UnderlinedMnemonics(QProxyStyle):
         return super().styleHint(hint, option, widget, returnData)
 
 
-def blended(over: QColor, under: QColor, amount: float) -> QColor:
-    """``over`` mixed ``amount`` of the way onto ``under``, opaque.
-
-    The one arithmetic behind every colour that is *derived from the palette*
-    rather than written down: a washed selection, a greyed note. Each has to
-    hold up on both the light surface and the dark one, and a literal that reads
-    right against one is a smear against the other -- so they are stated as a
-    distance from a palette role, and computed here.
-
-    Opaque rather than an alpha brush: an item view's selection is painted by
-    the style, and not every style composites a translucent ``Highlight`` the
-    same way -- while every one of them fills with a solid colour identically.
-    """
-    return QColor(
-        *(
-            round(below + (above - below) * amount)
-            for above, below in (
-                (over.red(), under.red()),
-                (over.green(), under.green()),
-                (over.blue(), under.blue()),
-            )
-        )
-    )
-
-
 def palette_for(theme: Theme, style: QStyle | None = None) -> QPalette:
     """``theme``'s palette, as ``style`` would wear it.
 

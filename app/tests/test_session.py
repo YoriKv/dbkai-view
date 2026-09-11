@@ -79,6 +79,19 @@ def test_playback_steps_and_loops(session):
     assert session.frame == 0 and session.playing
 
 
+def test_toggle_play_pauses_resumes_and_restarts_a_finished_run(session):
+    session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
+    session.set_clip_frame(1)
+    session.toggle_play()
+    assert session.playing and session.frame == 1  # resumed, not rewound
+    session.toggle_play()
+    assert not session.playing and session.frame == 1
+    session.loop = False
+    session.set_clip_frame(2)
+    session.toggle_play()
+    assert session.playing and session.frame == 0  # over from the start
+
+
 def test_options_emit_only_on_change(session):
     seen = []
     session.options_changed.connect(lambda: seen.append(1))
@@ -198,3 +211,91 @@ def test_action_colour_scheme_does_not_outlive_the_action(session):
     assert session.options.palette == 2
     session._set_model(session.model, None, None)  # another model: back to default
     assert session.options.palette == 0 and session.action is None
+
+
+def test_an_action_set_can_be_added_before_any_model(qapp):
+    s = Session()
+    file = dsa.parse(build_actions(), "fixture.dsa")
+    s.add_action_set(file)
+    assert s.is_added_action_set(file.name)
+    s.remove_action_set(file.name)
+    assert s.action_sets == []
+
+
+@pytest.mark.parametrize(
+    "leave",
+    [
+        lambda s: s.set_motion(Motion(dse.parse(build_motion(frames=3)), "other")),
+        lambda s: s.set_clip(s.clip),
+        lambda s: s.set_clip_frame(1),
+    ],
+    ids=["another motion", "a clip", "scrubbing"],
+)
+def test_choosing_the_pose_another_way_leaves_the_action(session, leave):
+    session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
+    file = dsa.parse(build_actions(), "fixture.dsa")
+    session.action_sets = [file]
+    session.set_option("palette", 1)
+    session.set_action((file, file.actions[0]))
+    session.set_action_frame(10)  # the colour command picks scheme 2 here
+    assert session.options.palette == 2
+    seen = []
+    session.actions_changed.connect(lambda: seen.append(1))
+    leave(session)
+    assert session.action is None and session.action_frame == 0
+    assert session.options.palette == 1  # the scheme the action chose is undone
+    assert seen  # the Actions tab hears of it
+
+
+def test_a_new_rom_takes_the_old_roms_model_with_it(tmp_path, qapp):
+    rom = tmp_path / "game.nds"
+    rom.write_bytes(build_rom())
+    s = Session()
+    s.open_rom(rom)
+    s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
+    assert s.model is not None and s.action_sets
+    s.open_rom(rom)
+    assert s.model is None and s.asset is None
+    assert s.motion is None and s.action_sets == [] and s.visible_meshes() == []
+
+
+def test_a_new_rom_keeps_a_model_opened_from_a_file(tmp_path, qapp):
+    rom = tmp_path / "game.nds"
+    rom.write_bytes(build_rom())
+    model = tmp_path / "model.dse"
+    model.write_bytes(build_model())
+    s = Session()
+    s.open_file(model)
+    s.open_rom(rom)
+    assert s.model is not None and s.model_path == model
+
+
+def test_a_preset_is_chosen_like_an_action(qapp):
+    from dbkai.game import GameData
+    from dbkai.nds.rom import NdsRom
+
+    s = Session()
+    s.game = GameData(NdsRom(build_rom()))
+    s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
+    file = s.action_sets[0]
+    s.set_action((file, file.actions[0]))
+    s.set_action_frame(10)  # the colour command picks scheme 2 here
+    s.play()
+    seen = []
+    s.actions_changed.connect(lambda: seen.append(1))
+    s.set_preset(10000)  # 0x802300FF: groups 0-7, parts 0, 1, 5, 15
+    assert s.action is None and not s.playing and s.options.palette == 0
+    assert s.preset == 10000 and seen
+    assert s.visibility.groups == {0, 1} and s.visibility.parts == {0}
+    # An action takes its place, and it takes an action's.
+    s.set_action((file, file.actions[0]))
+    assert s.preset is None
+    s.set_preset(10000)
+    assert s.action is None and s.preset == 10000
+    # Setting the parts by hand leaves it; the parts stay as set.
+    seen.clear()
+    s.set_group(1, False)
+    assert s.preset is None and seen and s.visibility.groups == {0}
+    s.set_preset(10000)
+    s.set_preset(None)
+    assert s.preset is None and s.visibility.groups == {0, 1}

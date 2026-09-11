@@ -6,13 +6,13 @@
 # Game data and anything extracted from it is byte-exact input to the
 # extractor. `text=auto` would normally detect these as binary anyway, but a
 # mis-detection would silently corrupt a fixture, so mark them explicitly.
-*.3ds  -text
-*.cia  -text
-*.cxi  -text
+*.nds  -text
+*.dsa  -text
+*.dse  -text
+*.dsez -text
+*.dse7 -text
+*.dsdz -text
 *.bin  -text
-*.bch  -text
-*.cgfx -text
-*.arc  -text
 
 # App assets.
 *.png  -text

@@ -45,9 +45,10 @@ Version bump (positional, default: patch):
   major            X.y.z  ->  (X+1).0.0
 
 Options:
-  -f, --force      Skip the uncommitted-changes check. Only the version bump and
-                   the CHANGELOG.md date stamp are committed; any other modified
-                   files are left uncommitted and are NOT part of the release.
+  -f, --force      Skip the uncommitted-changes check. Only $VERSION_FILE and
+                   CHANGELOG.md are committed (with any other edits already in
+                   them); other modified files are left uncommitted and are NOT
+                   part of the release.
   -n, --dry-run    Show what would happen; change nothing.
   -y, --yes        Don't prompt for confirmation before committing/pushing.
   -h, --help       Show this help and exit.
@@ -174,11 +175,26 @@ if [ "$ASSUME_YES" -ne 1 ]; then
 fi
 
 # ── Execute ─────────────────────────────────────────────────────────────────
-# Restore the touched files to HEAD (undo a partial bump/stamp).
-rollback() { git checkout -q HEAD -- "$VERSION_FILE" CHANGELOG.md 2>/dev/null || true; }
+# Copies of the two files as they are now, uncommitted edits included, so a
+# failure puts back exactly what was there rather than HEAD's version.
+BACKUP="$(mktemp -d)"
+trap 'rm -rf "$BACKUP"' EXIT
+cp "$VERSION_FILE" "$BACKUP/version"
+cp CHANGELOG.md "$BACKUP/changelog"
+rollback() {
+  cp "$BACKUP/version" "$VERSION_FILE"
+  cp "$BACKUP/changelog" CHANGELOG.md
+}
+
+# sed -E through a copy, not `sed -i`: BSD sed (macOS) reads the argument after
+# -i as a backup suffix, so `sed -i -E` would take -E for one.
+sed_file() {  # sed_file <expression> <file>
+  sed -E "$1" "$2" > "$2.release-tmp" && mv "$2.release-tmp" "$2"
+}
 
 info "Bumping $VERSION_FILE to $NEW_VERSION ..."
-if ! sed -i -E "s/^(__version__[[:space:]]*=[[:space:]]*\")[^\"]+(\".*)/\1$NEW_VERSION\2/" "$VERSION_FILE"; then
+sed_file "s/^(__version__[[:space:]]*=[[:space:]]*\")[^\"]+(\".*)/\1$NEW_VERSION\2/" "$VERSION_FILE" || true
+if ! grep -qE "^__version__[[:space:]]*=[[:space:]]*\"$NEW_VERSION\"" "$VERSION_FILE"; then
   rollback
   die "failed to write the new version to $VERSION_FILE."
 fi
@@ -186,7 +202,7 @@ fi
 info "Stamping CHANGELOG.md (\"## $TAG - unreleased\" -> \"## $TAG - $TODAY\") ..."
 # Match either casing of the marker ("unreleased" / "Unreleased"); [Uu] is
 # portable across GNU and BSD sed (unlike the GNU-only case-insensitive flag).
-if ! sed -i -E "s/^## $TAG[[:space:]]*-[[:space:]]*[Uu]nreleased[[:space:]]*\$/## $TAG - $TODAY/" CHANGELOG.md; then
+if ! sed_file "s/^## $TAG[[:space:]]*-[[:space:]]*[Uu]nreleased[[:space:]]*\$/## $TAG - $TODAY/" CHANGELOG.md; then
   rollback
   die "failed to stamp CHANGELOG.md."
 fi
@@ -194,7 +210,7 @@ fi
 info "Committing version bump + changelog ..."
 if ! git commit -q -m "Release $TAG" -- "$VERSION_FILE" CHANGELOG.md; then
   rollback
-  die "git commit failed; reverted $VERSION_FILE and CHANGELOG.md."
+  die "git commit failed; restored $VERSION_FILE and CHANGELOG.md."
 fi
 
 info "Tagging $TAG ..."

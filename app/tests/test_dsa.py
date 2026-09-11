@@ -1,7 +1,9 @@
 """The action set parser and the masks it yields, on the synthetic file."""
 
-from dbkai.formats import dsa
-from tests.dsa_fixture import build_actions
+import pytest
+
+from dbkai.formats import dsa, prm
+from tests.dsa_fixture import build_actions, build_presets
 
 
 def test_parse_actions_and_commands():
@@ -49,22 +51,15 @@ def test_mask_helpers():
 
 
 def test_rejects_garbage():
-    import pytest
-
     with pytest.raises(dsa.DsaError):
         dsa.parse(b"NOPE" + bytes(40))
 
 
 def test_prm_presets():
-    from dbkai.formats import prm
-    from tests.dsa_fixture import build_presets
-
     table = prm.parse(build_presets())
     assert table.record_size == 16 and len(table.records) == 3
     presets = prm.visibility_presets(table)
     assert presets[prm.REST_PRESET] == 0x8023033F
-    import pytest
-
     with pytest.raises(prm.PrmError):
         prm.parse(b"nope")
 
@@ -81,3 +76,13 @@ def test_motion_command_segments():
     assert idle.motion_at(10) == (1, 5)  # second segment starts at take frame 5
     assert idle.motion_at(31) == (0, 2)  # wrapped over the period
     assert f.actions[1].motion_at(0) is None
+
+
+def test_last_record_keeps_its_payload():
+    # Header 0x18 is the command area's size, relative to the area, so the
+    # record at the highest offset (here the motion command) runs to the end
+    # of the file rather than losing its payload.
+    f = dsa.parse(build_actions(), "fixture.dsa")
+    assert f.version == 0x1101
+    last = f.actions[0].commands[-1]
+    assert isinstance(last, dsa.MotionCommand) and len(last.segments) == 2

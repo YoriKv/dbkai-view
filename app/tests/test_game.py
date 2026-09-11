@@ -160,5 +160,23 @@ def test_action_sets_and_presets(rom_bytes):
     assert (
         game.load_action_set(game.action_sets_for(hero)[0]).actions[0].action_id == 1000
     )
-    assert game.rest_mask() == 0x8023033F
+    assert game.rest_mask(hero) == 0x8023033F
+    # Only a fighter rests in the preset; a prop shows everything.
+    assert game.rest_mask(game.find("/debug/cube.dse7")) is None
     assert game.visibility_presets[10000] == 0x802300FF
+
+
+def test_a_stray_magic_in_a_package_does_not_lose_the_catalogue():
+    # A "DSE\0" whose header claims 50 bones in a file too short for them:
+    # parse fails with struct.error rather than DseError.
+    bogus = bytearray(0x74)
+    bogus[:4] = b"DSE\0"
+    struct.pack_into("<9H", bogus, 0x1E, 0, 0, 50, 0, 0, 0, 0, 0, 0)
+    struct.pack_into("<I", bogus, 0x30 + 12 * 4, len(bogus))
+    import lzma
+
+    package = lzma.compress(
+        bytes(0x10) + bytes(bogus) + build_model(), format=lzma.FORMAT_ALONE
+    )
+    game = GameData(NdsRom(make_rom({"debug/400000.dsdz": package})))
+    assert [a.path for a in game.assets] == ["/debug/400000.dsdz/fixture.dse"]

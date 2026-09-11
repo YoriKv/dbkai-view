@@ -13,14 +13,29 @@ a panel can be added or removed without touching the others.
   the models and motions embedded in the `sp/*.dsdz` story packages.
   Activating a model loads it, a motion binds it to the loaded model, and an
   action set joins the Actions tab, so any character can be posed with any
-  file's actions; *Remove file* there takes such a file out again (the
-  model's own files stay).
+  file's actions; *Remove set* there takes such a set out again (the
+  model's own sets stay). An asset that fails to load says why in a message
+  box.
 - **Viewport** (`viewport.py`): a `QOpenGLWidget` on a 3.3 core context
   through PyOpenGL. Orbit with the left button, pan with the right or middle,
-  zoom with the wheel; *View > Reset camera* refits. Its backing and grid are
-  literal colours, not palette roles (see [theme.md](theme.md)).
-- **Model** dock, five tabs (`panels.py`): *Parts*, *Animation*, *Actions*,
-  *Materials*, *Skeleton*.
+  zoom with the wheel; *View > Reset camera* (`Home`) refits. The camera is
+  `camera.py` and the GL objects `gl_scene.py`, both Qt-free. Its backing and
+  grid are literal colours, not palette roles (see [theme.md](theme.md)).
+- **Model** dock: the open model's name over five tabs (`panels/`, one
+  module each): *Parts*, *Animation*, *Actions*, *Materials*, *Skeleton*.
+
+## Keys
+
+Every key is the shortcut of a menu action, and *Help > Shortcuts* (`F1`,
+`shortcuts.py`) lists them by reading the menu bar, so a key given to a new
+action appears there by itself; only the viewport's mouse gestures are written
+into that module by hand. The View menu's toggles are bare letters (`T`
+textures, `C` vertex colours, `B` culling, `W` wireframe, `G` grid, `S`
+skeleton), which a focused text box keeps for typing; the two docks are
+`Ctrl+1` and `Ctrl+2`. `Space` plays or pauses whatever the transport is
+showing, from wherever the focus is: it resumes where it stands, and starts
+over once the run has reached its last frame. Unlike *Play*, it does not
+rewind.
 
 ## Drawing what the game draws
 
@@ -37,12 +52,13 @@ free.
 *part* bit are both set in a 32-bit mask ([formats/dsa.md](../formats/dsa.md)).
 The Parts tab exposes both masks as checkboxes plus a per-batch override;
 *Rest* restores the game's rest preset (state 10005 of its parameter table:
-neutral face, open hands). That preset names a character's groups and
-parts; when it would hide every mesh of a model — an accessory such as a
-cap, a mask or a hand model keeps its own group numbers and the game draws
-it under the mask of the character wearing it — the model shows everything
-instead. The **Actions** tab is laid out like the Animation tab: a *Source*
-chooser with the character's `.dsa` files and that table's presets, a list
+neutral face, open hands) for a fighter, a model with a body type; the
+table is the fighters' state machine, and nothing in a model itself says
+which of its groups or parts are alternatives to one another. Any other
+model — an accessory, a stage piece, an effect, a character a skill summons
+— is drawn under the mask of whatever carries it, which is not read, so it
+opens with everything shown. The **Actions** tab is laid out like the Animation tab: an *Action
+set* chooser with the character's `.dsa` files and that table's presets, a list
 of the source's actions (id, frames, the clip numbers it plays), and the
 transport. Choosing an action plays it: its motion command names the clips
 (of the body's motion set) and the take frames, its visibility and colour
@@ -50,27 +66,33 @@ commands the masks, all driven by the action's own frame counter, so an
 attack shows its fists and a damage reaction its damage face exactly when
 the game would. Switching actions while playing keeps playing, as switching
 clips does; a line names the clip, take frame and mask at the current
-frame. Scrubbing a clip in the Animation tab, or picking another motion
-source, drops the action again, and with it the colour scheme it chose;
-opening another model starts at palette 0. A model opened from a file,
-with no ROM to read the table from, shows everything.
+frame. Choosing or scrubbing a clip in the Animation tab, or picking another
+motion source, drops the action again, and with it the colour scheme it chose;
+opening another model starts at palette 0. A preset is chosen the same way
+and shows its mask (state id and what it enables; a preset has no frames, so
+the list has no frames column and the transport no slider while the presets
+are listed); it stays the chosen one, named on the line, until an action
+is chosen, *No action* is pressed, or the parts are set by hand. A model
+opened from a file, with no ROM to read the table from, shows everything.
 
 **Animation.** A character model automatically binds the motion set of its
 body type; a prop that carries its own frames plays those. The tab lists the
 clips; the slider scrubs, *Play* runs the clip from its first frame at the
 game's 60 frames per second times the speed. Any other motion file can be
-opened from disk and bound by bone name; a motion that is not one of the model's own choices (from disk,
-or the set an action binds) appears as an extra entry of the source list,
-tagged rather than backed by an asset. Billboard bones (the `BL_` hair pieces) face the camera as they do
-in the game.
+opened from disk and bound by bone name; a motion that is not one of the
+model's own choices (from disk, or the set an action binds) appears as an
+extra entry of the source list, and choosing that entry again binds it again.
+Billboard bones (the `BL_` hair pieces) face the camera as they do in the
+game.
 
 **Materials.** Textures with their decoded preview, and the palette spinner
 for textures that ship several (the game's alternate colour schemes).
 
 ## Exporting
 
-*File > Export glTF* writes the visible meshes as a `.glb` with the skeleton,
-the textures and either the current clip or every clip of the bound motion;
+The File menu's exports (`exports.py`) start in the folder last opened from
+or written to. *File > Export glTF* writes the visible meshes as a `.glb` with
+the skeleton, the textures and either the current clip or every clip of the bound motion;
 *one file per clip* writes a folder of `<model>__<clip>.glb` files instead,
 each self-contained, since a whole motion set in one file runs to tens of
 megabytes. *current action* writes the action chosen in the Actions tab as
@@ -85,7 +107,8 @@ are not written; the textures use the palette on screen. The file carries
 only the materials and textures its meshes use, and passes the Khronos glTF
 validator.
 *Export Textures* writes every texture (every palette) as PNG. *Extract
-Everything* runs the command-line extractor over the whole ROM into a folder.
+Everything* runs the command-line extractor over every model and texture set
+of the ROM, with their motions, into a folder.
 The same operations exist headless: `python -m dbkai.cli --help`.
 
 ## Checking rendering from a script

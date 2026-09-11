@@ -52,7 +52,7 @@ def test_lzma_detection():
 def test_gx_decode_all_vertex_forms():
     words = [
         0x24232220,  # COLOR, TEXCOORD, VTX_16, VTX_10
-        texture.rgb555_to_rgb8(0) and 0x7FFF,  # white
+        0x7FFF,  # white
         (32 << 4) | ((16 << 4) << 16),  # s=32, t=16 texels
         (0x1000) | (0x2000 << 16),
         0x0800,  # (1.0, 2.0, 0.5)

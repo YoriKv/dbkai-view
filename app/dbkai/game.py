@@ -30,6 +30,9 @@ from dbkai.model.animation import Motion
 from dbkai.nds.rom import NdsRom, RomFile
 
 ARCHIVE_PATH = "/archiveDBK.dsa"
+#: Where a DSE header keeps the file's total size: the last entry of the
+#: section table at 0x30.
+_DSE_SIZE_OFFSET = 0x30 + 12 * 4
 _ID_PREFIX = re.compile(r"^(?:nt_|sm_|st_)?(\d+)")
 
 
@@ -154,12 +157,14 @@ class GameData:
             start = m.start()
             if start + dse.HEADER_SIZE > len(data):
                 continue
-            size = struct.unpack_from("<I", data, start + 0x30 + 12 * 4)[0]
+            size = struct.unpack_from("<I", data, start + _DSE_SIZE_OFFSET)[0]
             if size < dse.HEADER_SIZE or start + size > len(data):
                 continue
             try:
                 file = dse.parse(data[start : start + size])
-            except dse.DseError:
+            except Exception:  # noqa: BLE001 - the magic can occur by chance
+                # Not only DseError: a bogus header sends parse reading past
+                # the end, and one stray match must not lose the whole ROM.
                 continue
             kind = classify(file)
             if kind is AssetKind.OTHER:
@@ -228,13 +233,9 @@ class GameData:
         return self._motion_sets[set_id]
 
     def motion_set_for(self, asset: Asset) -> Asset | None:
+        """The motion set of a character model's body type, or ``None``."""
         body = asset.body_type
-        if body is None:
-            return None
-        for a in self.motion_sets():
-            if a.numeric_id == body:
-                return a
-        return None
+        return None if body is None else self.motion_set_by_id(body)
 
     def action_sets(self) -> list[Asset]:
         return [a for a in self.assets if a.kind is AssetKind.ACTION_SET]
@@ -295,8 +296,14 @@ class GameData:
                     return {}
         return {}
 
-    def rest_mask(self) -> int | None:
-        """The draw mask of the rest preset (:data:`prm.REST_PRESET`)."""
+    def rest_mask(self, asset: Asset) -> int | None:
+        """The draw mask a fighter rests in (:data:`prm.REST_PRESET`), for a
+        model with a body type; ``None`` for anything else. The preset table
+        is the fighters' state machine: a stage piece, an effect, an accessory
+        or a character a skill summons is drawn under the mask of whatever
+        carries it, which is not read, so such a model shows everything."""
+        if asset.body_type is None:
+            return None
         return self.visibility_presets.get(prm.REST_PRESET)
 
     def motions_for(self, asset: Asset) -> list[Asset]:

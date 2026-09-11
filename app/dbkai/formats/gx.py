@@ -52,13 +52,15 @@ class Vertex:
     normal: tuple[float, float, float] | None = None
 
 
-def _s16(v: int) -> int:
-    return v - 0x10000 if v & 0x8000 else v
+def signed(value: int, bits: int) -> int:
+    """The low ``bits`` of ``value`` read as a two's-complement number."""
+    value &= (1 << bits) - 1
+    return value - (1 << bits) if value >> (bits - 1) else value
 
 
-def _s10(v: int) -> int:
-    v &= 0x3FF
-    return v - 0x400 if v & 0x200 else v
+def rgb555(word: int) -> tuple[int, int, int]:
+    """An RGB555 word split into its 5-bit channels, red lowest."""
+    return (word & 0x1F, (word >> 5) & 0x1F, (word >> 10) & 0x1F)
 
 
 def decode_vertices(data: bytes) -> list[Vertex]:
@@ -95,48 +97,46 @@ def decode_vertices(data: bytes) -> list[Vertex]:
             params = words[i : i + count]
             i += count
             if cmd == 0x20:
-                c = params[0]
-                color = (c & 0x1F, (c >> 5) & 0x1F, (c >> 10) & 0x1F)
+                color = rgb555(params[0])
             elif cmd == 0x21:
                 p = params[0]
-                normal = (_s10(p) / 512, _s10(p >> 10) / 512, _s10(p >> 20) / 512)
+                normal = (
+                    signed(p, 10) / 512,
+                    signed(p >> 10, 10) / 512,
+                    signed(p >> 20, 10) / 512,
+                )
             elif cmd == 0x22:
                 p = params[0]
-                uv = (_s16(p & 0xFFFF) / 16, _s16(p >> 16) / 16)
+                uv = (signed(p, 16) / 16, signed(p >> 16, 16) / 16)
             elif cmd == 0x23:
-                pos[0] = _s16(params[0] & 0xFFFF)
-                pos[1] = _s16(params[0] >> 16)
-                pos[2] = _s16(params[1] & 0xFFFF)
+                pos[0] = signed(params[0], 16)
+                pos[1] = signed(params[0] >> 16, 16)
+                pos[2] = signed(params[1], 16)
                 emit()
             elif cmd == 0x24:
                 p = params[0]
-                pos[0] = _s10(p) << 6
-                pos[1] = _s10(p >> 10) << 6
-                pos[2] = _s10(p >> 20) << 6
+                pos[0] = signed(p, 10) << 6
+                pos[1] = signed(p >> 10, 10) << 6
+                pos[2] = signed(p >> 20, 10) << 6
                 emit()
             elif cmd == 0x25:
-                pos[0] = _s16(params[0] & 0xFFFF)
-                pos[1] = _s16(params[0] >> 16)
+                pos[0] = signed(params[0], 16)
+                pos[1] = signed(params[0] >> 16, 16)
                 emit()
             elif cmd == 0x26:
-                pos[0] = _s16(params[0] & 0xFFFF)
-                pos[2] = _s16(params[0] >> 16)
+                pos[0] = signed(params[0], 16)
+                pos[2] = signed(params[0] >> 16, 16)
                 emit()
             elif cmd == 0x27:
-                pos[1] = _s16(params[0] & 0xFFFF)
-                pos[2] = _s16(params[0] >> 16)
+                pos[1] = signed(params[0], 16)
+                pos[2] = signed(params[0] >> 16, 16)
                 emit()
             elif cmd == 0x28:
                 p = params[0]
-                pos[0] += _s10(p)
-                pos[1] += _s10(p >> 10)
-                pos[2] += _s10(p >> 20)
+                pos[0] += signed(p, 10)
+                pos[1] += signed(p >> 10, 10)
+                pos[2] += signed(p >> 20, 10)
                 emit()
             # State commands a list could carry (0x29-0x2B, 0x40, 0x41) do not
             # change the vertices, so they are skipped once counted.
     return out
-
-
-def color5_to_float(color: tuple[int, int, int]) -> tuple[float, float, float]:
-    """5-bit RGB to 0..1."""
-    return (color[0] / 31, color[1] / 31, color[2] / 31)

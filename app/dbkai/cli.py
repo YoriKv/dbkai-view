@@ -1,14 +1,14 @@
 """The headless side as a command line: list a ROM's assets, extract them,
 export models to glTF.
 
-    python -m dbkai.cli list ROM [--kind model]
-    python -m dbkai.cli extract ROM OUT [--kind model] [--match TEXT] [--motion]
-        [--per-clip]
+    python -m dbkai.cli list ROM [--kind KIND] [--match TEXT]
+    python -m dbkai.cli extract ROM OUT [--kind model|textures] [--match TEXT]
+        [--motion] [--per-clip]
     python -m dbkai.cli export ROM ASSET OUT.glb [--motion ASSET] [--clip NAME]
         [--all-parts] [--per-clip]
 
-With ``--per-clip`` the destination is a folder and every clip becomes its
-own ``<model>__<clip>.glb`` next to a clip-free ``<model>.glb``.
+With ``--per-clip`` every clip becomes its own ``<model>__<clip>.glb`` next to
+a clip-free ``<model>.glb``; for ``export`` the destination is then a folder.
 """
 
 from __future__ import annotations
@@ -18,13 +18,12 @@ import sys
 from pathlib import Path
 
 from dbkai.export.gltf import export_clips, export_glb
-from dbkai.export.png import encode_png
+from dbkai.extract import EXTRACTABLE, bind_clips, export_asset
 from dbkai.game import Asset, AssetKind, GameData
-from dbkai.model.animation import BoundMotion, Clip
+from dbkai.nds.rom import RomError
 
-
-def _open(path: str) -> GameData:
-    return GameData.open(path)
+#: The program name in usage and error messages. ``dbkai`` itself is the viewer.
+PROG = "python -m dbkai.cli"
 
 
 def _select(game: GameData, kind: str | None, match: str | None) -> list[Asset]:
@@ -39,70 +38,21 @@ def _select(game: GameData, kind: str | None, match: str | None) -> list[Asset]:
 
 
 def cmd_list(args: argparse.Namespace) -> int:
-    game = _open(args.rom)
+    game = GameData.open(args.rom)
     for a in _select(game, args.kind, args.match):
         packed = f" ({a.packed_size} packed)" if a.packed_size else ""
         print(f"{a.kind.value:10s} {a.size:9d}{packed:>16s}  {a.path}")
     return 0
 
 
-def _export_asset(
-    game: GameData,
-    asset: Asset,
-    out_dir: Path,
-    with_motion: bool,
-    per_clip: bool = False,
-) -> Path | None:
-    file = game.load_dse(asset)
-    stem = Path(asset.name).stem
-    target = out_dir / asset.directory.lstrip("/")
-    target.mkdir(parents=True, exist_ok=True)
-    for t in file.textures:
-        if not t.has_data:
-            continue
-        for p in range(t.palette_count):
-            rgba = t.decode(p, not (t.raw_format >> 16) & 1)
-            suffix = f"_p{p}" if t.palette_count > 1 else ""
-            name = f"{stem}_{Path(t.name).stem}{suffix}.png"
-            (target / name).write_bytes(
-                encode_png(rgba.width, rgba.height, rgba.pixels)
-            )
-    if not file.meshes:
-        return None
-    model = game.load_model(asset)
-    motions: list[tuple[BoundMotion, Clip]] = []
-    if with_motion:
-        for m_asset in game.motions_for(asset):
-            motion = game.load_motion(m_asset)
-            bound = BoundMotion.bind(model.skeleton, motion)
-            if bound.matched:
-                motions += [(bound, c) for c in motion.clips]
-    path = target / f"{stem}.glb"
-    if per_clip:
-        path.write_bytes(export_glb(model, None, []))
-        export_clips(model, None, motions, target, stem)
-        return path
-    path.write_bytes(export_glb(model, None, motions))
-    return path
-
-
-#: What extract writes: the kinds that hold models, motions or textures.
-_EXTRACTABLE = {
-    AssetKind.MODEL,
-    AssetKind.TEXTURES,
-    AssetKind.MOTION,
-    AssetKind.MOTION_SET,
-}
-
-
 def cmd_extract(args: argparse.Namespace) -> int:
-    game = _open(args.rom)
+    game = GameData.open(args.rom)
     out = Path(args.out)
-    assets = [a for a in _select(game, args.kind, args.match) if a.kind in _EXTRACTABLE]
+    assets = [a for a in _select(game, args.kind, args.match) if a.kind in EXTRACTABLE]
     failed = 0
     for a in assets:
         try:
-            path = _export_asset(game, a, out, args.motion, args.per_clip)
+            path = export_asset(game, a, out, args.motion, args.per_clip)
             print(f"{a.path} -> {path if path else 'textures only'}")
         except Exception as exc:  # noqa: BLE001 - keep going, report at the end
             failed += 1
@@ -112,27 +62,29 @@ def cmd_extract(args: argparse.Namespace) -> int:
 
 
 def cmd_export(args: argparse.Namespace) -> int:
-    game = _open(args.rom)
+    game = GameData.open(args.rom)
     asset = game.find(args.asset)
     if asset is None:
         print(f"no such asset: {args.asset}", file=sys.stderr)
         return 2
-    model = game.load_model(asset)
-    motions: list[tuple[BoundMotion, Clip]] = []
-    sources = [game.find(args.motion)] if args.motion else game.motions_for(asset)
-    for m_asset in sources:
-        if m_asset is None:
+    if args.motion:
+        motion = game.find(args.motion)
+        if motion is None:
             print(f"no such motion: {args.motion}", file=sys.stderr)
             return 2
-        motion = game.load_motion(m_asset)
-        bound = BoundMotion.bind(model.skeleton, motion)
-        for c in motion.clips:
-            if args.clip and args.clip.lower() not in c.name.lower():
-                continue
-            motions.append((bound, c))
+        sources = [motion]
+    else:
+        sources = game.motions_for(asset)
+    model = game.load_model(asset)
+    if not model.meshes:
+        print(f"{args.asset} holds no meshes", file=sys.stderr)
+        return 2
+    motions = bind_clips(
+        model, (game.load_motion(a) for a in sources), clip_filter=args.clip
+    )
     visible = None
     if not args.all_parts:
-        groups, parts = model.rest_visibility(game.rest_mask())
+        groups, parts = model.rest_visibility(game.rest_mask(asset))
         visible = model.visible_meshes(groups, parts)
     count = len(visible if visible is not None else model.meshes)
     if args.per_clip:
@@ -148,8 +100,8 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="dbkai", description=__doc__.split("\n\n")[0])
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog=PROG, description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("list", help="list the assets in a ROM")
@@ -158,11 +110,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--match", help="only paths containing this text")
     p.set_defaults(func=cmd_list)
 
-    p = sub.add_parser("extract", help="export assets as glTF and PNG")
+    p = sub.add_parser("extract", help="export models as glTF and textures as PNG")
     p.add_argument("rom")
     p.add_argument("out")
-    p.add_argument("--kind", choices=[k.value for k in AssetKind])
-    p.add_argument("--match")
+    p.add_argument("--kind", choices=[k.value for k in EXTRACTABLE])
+    p.add_argument("--match", help="only paths containing this text")
     p.add_argument(
         "--motion",
         action="store_true",
@@ -190,9 +142,19 @@ def main(argv: list[str] | None = None) -> int:
         help="OUT is a folder; write one glTF per clip plus one without animation",
     )
     p.set_defaults(func=cmd_export)
+    return parser
 
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except (OSError, RomError) as exc:
+        # A ROM that is missing or is not one, or a destination that cannot be
+        # written: the user's to fix, so a message rather than a traceback.
+        print(f"{PROG}: error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

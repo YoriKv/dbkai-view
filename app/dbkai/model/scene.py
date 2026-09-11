@@ -122,15 +122,14 @@ class Model:
         return sorted({m.part for m in self.meshes})
 
     def bounds(self) -> tuple[np.ndarray, np.ndarray]:
-        if not self.meshes:
+        """The box around every vertex; zeros when there are none."""
+        boxes = [m.bounds() for m in self.meshes if m.vertex_count]
+        if not boxes:
             return np.zeros(3), np.zeros(3)
-        lo = np.min(
-            [m.positions.min(axis=0) for m in self.meshes if len(m.positions)], axis=0
+        return (
+            np.min([lo for lo, _hi in boxes], axis=0),
+            np.max([hi for _lo, hi in boxes], axis=0),
         )
-        hi = np.max(
-            [m.positions.max(axis=0) for m in self.meshes if len(m.positions)], axis=0
-        )
-        return lo, hi
 
     def everything(self) -> tuple[set[int], set[int]]:
         """Every group and part the model has. What is shown when no game
@@ -148,11 +147,9 @@ class Model:
         return [m for m in self.meshes if m.group in groups and m.part in parts]
 
     def rest_visibility(self, mask: int | None) -> tuple[set[int], set[int]]:
-        """What to show at rest: the game's character preset ``mask`` when
-        it applies to this model, everything otherwise. The preset names a
-        character's groups and parts; an accessory or prop keeps its own
-        groups (a cap is group 1, a hand 12) and the game draws it under the
-        mask of the object that carries it, which is not read yet."""
+        """What to show at rest: the fighter preset ``mask`` when it shows
+        something of this model, everything otherwise (``None`` is what a
+        model that is no fighter gets, :meth:`dbkai.game.GameData.rest_mask`)."""
         if mask is not None:
             groups, parts = self.visibility_from_mask(mask)
             if any(m.vertex_count for m in self.visible_meshes(groups, parts)):
@@ -173,8 +170,8 @@ def build(file: dse.DseFile, name: str = "") -> Model:
             repeat_t=m.repeat_t,
             flip_s=m.flip_s,
             flip_t=m.flip_t,
-            alpha=m.raw[6] if len(m.raw) > 6 else 31,
-            diffuse=tuple(c / 31 for c in m.diffuse),  # type: ignore[arg-type]
+            alpha=m.alpha,
+            diffuse=_unit_color(m.diffuse),
         )
         for m in file.materials
     ]
@@ -186,7 +183,7 @@ def build(file: dse.DseFile, name: str = "") -> Model:
             height=t.height,
             format=t.format,
             palette_count=t.palette_count,
-            color0_transparent=not (t.raw_format >> 16) & 1,
+            color0_transparent=t.color0_transparent,
             available=t.has_data,
             _source=t,
         )
@@ -219,7 +216,7 @@ def _build_mesh(
         file.materials[material_index] if material_index < len(file.materials) else None
     )
     part = material.part if material else 0
-    default_color = np.array([c / 31 for c in mesh.color], dtype=np.float32)
+    default_color = np.array(_unit_color(mesh.color), dtype=np.float32)
     factor = float(1 << mesh.shift)
     # The game takes the alpha from the material record; the alpha field of
     # the material-select chunk is never read.
@@ -240,49 +237,36 @@ def _build_mesh(
     bind = skeleton.bind_world[bone] if len(skeleton) else np.eye(4)
     for dl in lists:
         per = dl.primitive.vertices_per_face
-        if dl.is_skinned:
-            verts = dl.skinned_vertices()
-            n = len(verts) - len(verts) % per
-            if n == 0:
-                continue
-            pos = np.array([v.position for v in verts[:n]], dtype=np.float64) * factor
-            uv = np.array([v.uv for v in verts[:n]], dtype=np.float32) / UV_UNITS
-            col = np.array(
-                [
-                    [c / 31 for c in v.color] if v.color is not None else default_color
-                    for v in verts[:n]
-                ],
+        verts = dl.skinned_vertices() if dl.is_skinned else dl.vertices()
+        n = len(verts) - len(verts) % per
+        if n == 0:
+            continue
+        verts = verts[:n]
+        pos = np.array([v.position for v in verts], dtype=np.float64) * factor
+        uv = (
+            np.array(
+                [v.uv if v.uv is not None else (0.0, 0.0) for v in verts],
                 dtype=np.float32,
             )
-            j = np.zeros((n, max_joints), dtype=np.int32)
-            w = np.zeros((n, max_joints), dtype=np.float32)
+            / UV_UNITS
+        )
+        col = np.array(
+            [
+                _unit_color(v.color) if v.color is not None else default_color
+                for v in verts
+            ],
+            dtype=np.float32,
+        )
+        j = np.zeros((n, max_joints), dtype=np.int32)
+        w = np.zeros((n, max_joints), dtype=np.float32)
+        if dl.is_skinned:
             j[:, : len(dl.bones)] = np.array(dl.bones, dtype=np.int32)
             w[:, : len(dl.bones)] = np.array(
-                [v.weights for v in verts[:n]], dtype=np.float32
+                [v.weights for v in verts], dtype=np.float32
             )
         else:
-            verts = dl.vertices()
-            n = len(verts) - len(verts) % per
-            if n == 0:
-                continue
-            local = np.array([v.position for v in verts[:n]], dtype=np.float64) * factor
-            pos = math3d.transform_points(bind, local)
-            uv = (
-                np.array(
-                    [v.uv if v.uv is not None else (0.0, 0.0) for v in verts[:n]],
-                    dtype=np.float32,
-                )
-                / UV_UNITS
-            )
-            col = np.array(
-                [
-                    [c / 31 for c in v.color] if v.color is not None else default_color
-                    for v in verts[:n]
-                ],
-                dtype=np.float32,
-            )
-            j = np.full((n, max_joints), bone, dtype=np.int32)
-            w = np.zeros((n, max_joints), dtype=np.float32)
+            pos = math3d.transform_points(bind, pos)
+            j[:] = bone
             w[:, 0] = 1.0
         faces = n // per
         if per == 3:
@@ -317,11 +301,16 @@ def _build_mesh(
         weights=cat(weights, (0, max_joints), np.float32),
         indices=cat(indices, (0, 3), np.uint32),
         has_vertex_colors=mesh.has_vertex_colors,
-        fog=bool(mesh.flags & 0x20),
+        fog=mesh.fog,
         alpha=alpha,
         shift=mesh.shift,
         inverted=mesh.back_faces_only,
     )
+
+
+def _unit_color(color: tuple[int, int, int]) -> tuple[float, float, float]:
+    """A 5-bit-per-channel colour in 0..1."""
+    return color[0] / 31, color[1] / 31, color[2] / 31
 
 
 def skin(mesh: MeshData, skin_matrices: np.ndarray) -> np.ndarray:

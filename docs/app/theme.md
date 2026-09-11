@@ -8,7 +8,8 @@ The only literals should be the ones that are deliberately *not* theme colours
 artwork whichever theme is on.
 
 View > Theme switches it live, and the choice is remembered under
-`view/theme` in the preference store.
+`view/theme` in the preference store. The bootstrap (`dbkai.app`) applies the
+remembered theme before the window is built; the menu only shows it.
 
 **Both themes run on Fusion.** The native Windows and macOS styles paint many
 controls from platform colours and ignore the application palette, so a dark
@@ -29,10 +30,6 @@ through the event loop rather than inside `setPalette`, and installing a style
 in between re-polishes every widget against the palette it already has — the
 queued `PaletteChange` is then considered satisfied and never delivered, so any
 pixmap baked from the palette keeps yesterday's colours.
-
-**Derived colours are a distance from a palette role.** `blended(over, under,
-amount)` mixes two roles opaquely; use it rather than a literal for anything
-that has to hold up on both surfaces.
 
 **Baked pixmaps go stale.** Anything that bakes a palette colour into a pixmap
 re-bakes on `QEvent.Type.PaletteChange`.

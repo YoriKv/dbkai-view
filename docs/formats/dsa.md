@@ -23,7 +23,7 @@ Little-endian. The 16.7 MiB `archiveDBK.dsa` is a different format
 | `0x10` | 2 | motion set count |
 | `0x12` | 2 | 0 |
 | `0x14` | 4 | offset of the command area |
-| `0x18` | 4 | offset of the embedded-data area, relative to the command area |
+| `0x18` | 4 | size of the command area; it runs to the end of the file |
 | `0x1C` | 4 | 0 |
 | `0x20` | 4 | `0x400` |
 
@@ -61,7 +61,7 @@ Commands seen (opcode: meaning, where the handler has been read):
 | `0x03` | link: at `start` the character may branch to the action whose record index is the s16 at `0x16` |
 | `0x04`, `0x14` | hit boxes and the group that turns them on |
 | `0x09` | play a sound: s16 sequence id at `0x10`, s16 kind at `0x12` |
-| `0x11` | **motion**: the clips the character plays. `0x14` flags, `0x15` = segment count, s16 at `0x1A` = loop period, u32 at `0x1C` = offset (relative to the command area) of the segments, 8 bytes each: `s16 resource, s16 take frame, s16 length, s16 flag`. The elapsed frames since `start` (wrapped over the period) walk the segments; the one they land in plays its resource's clip from `take frame` plus the remainder. The u32 at `0x10` points at per-frame data used with header flag bit 3 (root motion, not read) |
+| `0x11` | **motion**: the clips the character plays. `0x14` flags, `0x15` = segment count, s16 at `0x1A` = loop period, u32 at `0x1C` = offset (relative to the command area) of the segments, 8 bytes each: `s16 resource, s16 take frame, s16 length, s16 flag`. The elapsed frames since `start` (wrapped over the period) walk the segments; the one they land in plays its resource's clip from `take frame` plus the remainder. With bit 3 of the record flags (`0x01`) set and the s16 at `0x18` not negative, the u32 at `0x10` points at one 48-byte 4×3 matrix per frame since `start` (`0x02079a4c`); no shipped motion command sets the bit (flags are `0x63` or `0x61`) |
 | `0x12` | **visibility**: `0x14` = mode; mode 1 uses the u32 at `0x18` as the draw mask, mode 2 evaluates two tracks at the offsets in `0x1C` (groups) and `0x20` (parts), relative to the command area, at the frame since `start` |
 | `0x13` | **colour scheme**: the byte at `0x14` picks the texture palette |
 | others | not read |
@@ -112,9 +112,8 @@ Addresses in the ARM9 binary, named as `dsd` names them
 - Ops `0x01` (spawn an external object with its own motion), `0x04` and
   `0x14` (hit boxes), and the rest of the opcode range.
 - The 12-byte entries counted at header `0x0E`.
-- The per-frame 48-byte records a motion command's u32 at `0x10` points at
-  (root motion, used with the command's flag bit 3), and the s16 flag of a
-  segment.
+- What a motion command's per-frame matrices move — by inference the
+  character's root — and the s16 flag of a segment.
 - Resource flags.
 
 ## Visibility presets
@@ -126,10 +125,11 @@ game gives a character by state. Ids 10000-10006 are the neutral face
 10005 both open, 10006 both gripping; 11000-11006 the same with the damage
 mouth (part 6), 12000-12002 with the damage face (part 2); 20000-21006
 repeat the pairings with the grip hands 10 and 11; 19000 hides everything.
-The viewer rests on preset 10005, the look the title and character-select
-screens also draw (their own masks, `0x8123033F` in the title code and
-`0x8023F33F` at `0x0213b680` in overlay 2, share its face and open hands).
+The viewer rests a fighter on preset 10005, the look the title and
+character-select screens also draw (their own masks, `0x8123033F` in the
+title code and `0x8023F33F` at `0x0213b680` in overlay 2, share its face and
+open hands).
 
 `PRM` tables (`app/dbkai/formats/prm.py`): `PRM\0`, u16 `0x7755`, u16
-`0x1000`, four kind bytes, `-1`, u16 record count at `0x12`, u16 header size
-at `0x14`, u16 record size at `0x16`, then the records.
+`0x1000`, four kind bytes, `-1`, u16 record count at `0x10`, u16 header size
+at `0x12`, u16 record size at `0x14`, then the records.

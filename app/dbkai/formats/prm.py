@@ -24,7 +24,7 @@ REST_PRESET = 10005
 
 
 class PrmError(ValueError):
-    pass
+    """The bytes are not a PRM table, or not the table asked for."""
 
 
 @dataclass(frozen=True)

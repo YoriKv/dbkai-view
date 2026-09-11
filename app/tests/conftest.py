@@ -67,13 +67,17 @@ def _empty_settings(_test_settings_store):
 
 
 @pytest.fixture(autouse=True)
-def _about_never_blocks(monkeypatch):
-    """Make Help > About return instead of blocking."""
+def _help_never_blocks(monkeypatch):
+    """Make Help > About and Help > Shortcuts return instead of blocking. The
+    guide is still built, so a test can assert on what it was built from."""
     if "PySide6.QtWidgets" not in sys.modules:
         return
     from PySide6.QtWidgets import QMessageBox
 
+    from dbkai.ui.shortcuts import ShortcutGuide
+
     monkeypatch.setattr(QMessageBox, "about", lambda *args: None)
+    monkeypatch.setattr(ShortcutGuide, "exec", lambda self: 0)
 
 
 @pytest.fixture(autouse=True)
@@ -108,8 +112,9 @@ def _no_modal_dialogs(monkeypatch):
     """Turn the app's message boxes into exceptions.
 
     Under the offscreen platform a modal's ``exec()`` never returns, so a test
-    that reaches one wedges the run. The window only opens a message box to
-    report a failure, which a test would rather see as a traceback.
+    that reaches one wedges the run. Apart from the Help menu, which
+    :func:`_help_never_blocks` answers, the window only opens a message box
+    to report a failure, which a test would rather see as a traceback.
     """
     if "PySide6.QtWidgets" not in sys.modules:
         return
@@ -118,5 +123,5 @@ def _no_modal_dialogs(monkeypatch):
     def raise_instead(*args, **_kwargs):
         raise AssertionError(f"a message box opened: {args[1:]}")
 
-    for name in ("critical", "information", "warning", "about"):
+    for name in ("critical", "information", "warning"):
         monkeypatch.setattr(QMessageBox, name, staticmethod(raise_instead))

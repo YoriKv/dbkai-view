@@ -66,7 +66,10 @@ class NdsRom:
             fat_offset=struct.unpack_from("<I", data, 0x48)[0],
             fat_size=struct.unpack_from("<I", data, 0x4C)[0],
         )
-        self.files: list[RomFile] = list(self._walk())
+        try:
+            self.files: list[RomFile] = list(self._walk())
+        except (struct.error, IndexError) as exc:
+            raise RomError(f"the NitroFS tables run past the image: {exc}") from exc
         self._by_path = {str(f.path): f for f in self.files}
 
     @classmethod
@@ -88,8 +91,13 @@ class NdsRom:
     def _walk(self) -> Iterator[RomFile]:
         fnt = self.header.fnt_offset
         data = self.data
+        visited: set[int] = set()
 
         def directory(dir_id: int, prefix: PurePosixPath) -> Iterator[RomFile]:
+            # Every directory sits in the tree once; a repeat is a loop.
+            if dir_id in visited:
+                raise RomError(f"directory {dir_id:#x} is listed twice in the FNT")
+            visited.add(dir_id)
             sub_offset, first_id = struct.unpack_from(
                 "<IH", data, fnt + 8 * (dir_id & 0xFFF)
             )
