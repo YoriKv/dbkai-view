@@ -141,11 +141,13 @@ class Session(QObject):
         self.clip = None
         self.frame = 0
         self.action_files = []
+        self.own_action_files: set[str] = set()
         self.action = None
         if self.game is not None and asset is not None:
             for a in self.game.action_files_for(asset):
                 try:
                     self.action_files.append(self.game.load_actions(a))
+                    self.own_action_files.add(self.action_files[-1].name)
                 except Exception:  # noqa: BLE001 - a bad action file must not hide the model
                     log.exception("loading %s", a.path)
         self.model_changed.emit()
@@ -292,6 +294,20 @@ class Session(QObject):
             self.status.emit(f"{file.name}: {len(file.actions)} actions; open a model")
         else:
             self.status.emit(f"{file.name}: {len(file.actions)} actions")
+
+    def is_added_action_file(self, name: str) -> bool:
+        """Whether the file was added by hand rather than found for the
+        model, so it can be removed again."""
+        return name not in self.own_action_files
+
+    def remove_action_file(self, name: str) -> None:
+        """Take an added action file out again; the model's own files stay."""
+        if not self.is_added_action_file(name):
+            return
+        if self.action is not None and self.action[0].name == name:
+            self.set_action(None)
+        self.action_files = [f for f in self.action_files if f.name != name]
+        self.actions_changed.emit()
 
     def set_action(self, choice: tuple[dsa.DsaFile, dsa.Action] | None) -> None:
         """Play an action: its motion segments drive the clip and frame, its

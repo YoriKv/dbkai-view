@@ -137,3 +137,7 @@ def test_actions_panel_lists_and_selects(qtbot):
     panel.clear.click()
     assert window.session.action is None and not window.session.playing
     assert tree.currentItem() is None
+    # A file set by hand counts as added, so the Remove button takes it out.
+    assert panel.remove.isEnabled()
+    panel.remove.click()
+    assert window.session.action_files == [] and panel.source.count() == 0

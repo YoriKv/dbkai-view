@@ -164,3 +164,21 @@ def test_action_file_asset_joins_the_action_list(qapp):
     assert [f.name for f in s.action_files] == before + ["110000_TALL_POWER.dsa"]
     s.load_asset(s.game.find("/debug/110000_TALL_POWER.dsa"))  # again: replaces
     assert [f.name for f in s.action_files] == before + ["110000_TALL_POWER.dsa"]
+
+
+def test_added_action_file_can_be_removed_but_not_the_models_own(qapp):
+    from dbkai.game import GameData
+    from dbkai.nds.rom import NdsRom
+
+    s = Session()
+    s.game = GameData(NdsRom(build_rom()))
+    s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
+    own = [f.name for f in s.action_files]
+    s.load_asset(s.game.find("/debug/110000_TALL_POWER.dsa"))
+    added = s.action_files[-1]
+    assert s.is_added_action_file(added.name) and not s.is_added_action_file(own[0])
+    s.set_action((added, added.actions[0]))
+    s.remove_action_file(added.name)
+    assert [f.name for f in s.action_files] == own and s.action is None
+    s.remove_action_file(own[0])
+    assert [f.name for f in s.action_files] == own

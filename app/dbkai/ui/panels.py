@@ -447,6 +447,10 @@ class ActionsPanel(QWidget):
         self.info = QLabel("")
         self.info.setWordWrap(True)
         self.clear = QPushButton("No action")
+        self.remove = QPushButton("Remove file")
+        self.remove.setToolTip(
+            "Take an action file added from the Assets dock out again"
+        )
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.frame_label = QLabel("–")
         self.play = QPushButton("Play")
@@ -456,6 +460,7 @@ class ActionsPanel(QWidget):
         row = QHBoxLayout()
         row.addWidget(self.play)
         row.addWidget(self.clear)
+        row.addWidget(self.remove)
         frame_row = QHBoxLayout()
         frame_row.addWidget(self.slider, 1)
         frame_row.addWidget(self.frame_label)
@@ -471,6 +476,7 @@ class ActionsPanel(QWidget):
         self.source.currentIndexChanged.connect(self._source_chosen)
         self.tree.currentItemChanged.connect(self._chosen)
         self.clear.clicked.connect(lambda: session.set_action(None))
+        self.remove.clicked.connect(self._remove_source)
         self.slider.valueChanged.connect(session.set_action_frame)
         self.play.toggled.connect(self._play_toggled)
         session.actions_changed.connect(self.rebuild)
@@ -501,6 +507,7 @@ class ActionsPanel(QWidget):
         elif self.tree.topLevelItemCount() == 0 and names:
             self._fill(self.source.currentData())
         self._select_current()
+        self._update_remove()
         self._frame()
 
     def _wanted_source(self, names: list[str]) -> str | None:
@@ -566,6 +573,20 @@ class ActionsPanel(QWidget):
     def _source_chosen(self, _index: int) -> None:
         self._fill(self.source.currentData())
         self._select_current()
+        self._update_remove()
+
+    def _update_remove(self) -> None:
+        name = self.source.currentData()
+        self.remove.setEnabled(
+            isinstance(name, str)
+            and name != _PRESETS
+            and self.session.is_added_action_file(name)
+        )
+
+    def _remove_source(self) -> None:
+        name = self.source.currentData()
+        if isinstance(name, str) and name != _PRESETS:
+            self.session.remove_action_file(name)
 
     def _chosen(
         self, item: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None

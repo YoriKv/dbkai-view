@@ -13,7 +13,8 @@ a panel can be added or removed without touching the others.
   the models and motions embedded in the `sp/*.dsdz` story packages.
   Activating a model loads it, a motion binds it to the loaded model, and an
   action file joins the Actions tab, so any character can be posed with any
-  file's actions.
+  file's actions; *Remove file* there takes such a file out again (the
+  model's own files stay).
 - **Viewport** (`viewport.py`): a `QOpenGLWidget` on a 3.3 core context
   through PyOpenGL. Orbit with the left button, pan with the right or middle,
   zoom with the wheel; *View > Reset camera* refits. Its backing and grid are
