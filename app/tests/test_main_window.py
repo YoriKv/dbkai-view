@@ -83,3 +83,15 @@ def test_exports_write_files(qtbot, tmp_path, monkeypatch):
     )
     window.export_textures()
     assert (tmp_path / "skin.png").exists()
+
+
+def test_per_clip_export_writes_a_folder(qtbot, tmp_path, monkeypatch):
+    window = _window(qtbot)
+    window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), "spin"))
+    monkeypatch.setattr(
+        "dbkai.ui.main_window.QFileDialog.getExistingDirectory",
+        lambda *a, **k: str(tmp_path),
+    )
+    window.export_gltf_per_clip()
+    assert [p.name for p in tmp_path.iterdir()] == ["fixture__000_spin.glb"]
+    assert "1 clip files" in window.statusBar().currentMessage()

@@ -122,3 +122,22 @@ def test_png_encoder_roundtrips_header():
     assert struct.unpack_from(">II", png, 16) == (2, 1)
     with pytest.raises(ValueError):
         encode_png(2, 2, b"")
+
+
+def test_export_clips_writes_one_file_each(model, tmp_path):
+    from dbkai.export.gltf import clip_file_name, export_clips
+
+    motion = Motion(dse.parse(build_motion(frames=3)), "spin")
+    bound = BoundMotion.bind(model.skeleton, motion)
+    clip = motion.clips[0]
+    assert clip_file_name("hero", clip) == "hero__000_spin.glb"
+    second = type(clip)("weird name/2.dse", 0, 3)
+    assert clip_file_name("hero", second) == "hero__weird_name_2.glb"
+    written = export_clips(
+        model, None, [(bound, clip), (bound, second)], tmp_path, "hero"
+    )
+    assert [p.name for p in written] == ["hero__000_spin.glb", "hero__weird_name_2.glb"]
+    data = written[0].read_bytes()
+    json_len = struct.unpack_from("<I", data, 12)[0]
+    doc = json.loads(data[20 : 20 + json_len])
+    assert [a["name"] for a in doc["animations"]] == ["000_spin"]

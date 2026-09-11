@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from dbkai import APP_NAME, __version__
-from dbkai.export.gltf import export_glb
+from dbkai.export.gltf import export_clips, export_glb
 from dbkai.export.png import encode_png
 from dbkai.game import AssetKind
 from dbkai.model.animation import BoundMotion, Clip
@@ -136,6 +136,9 @@ class MainWindow(QMainWindow):
         )
         self._action(
             file_menu, "Export glTF (&all clips)…", lambda: self.export_gltf(True)
+        )
+        self._action(
+            file_menu, "Export glTF (one file per c&lip)…", self.export_gltf_per_clip
         )
         self._action(file_menu, "Export &Textures…", self.export_textures)
         self._action(file_menu, "Extract &Everything…", self.extract_all)
@@ -272,6 +275,41 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Export failed", str(exc))
             return
         self._status(f"Wrote {path} ({len(data) // 1024} KB)")
+
+    def export_gltf_per_clip(self) -> None:
+        """One ``.glb`` per clip of the bound motion, into a chosen folder."""
+        model = self.session.model
+        if model is None:
+            QMessageBox.information(self, "Export glTF", "Load a model first.")
+            return
+        clips = self._current_clips(True)
+        if not clips:
+            QMessageBox.information(
+                self,
+                "Export glTF",
+                "Bind a motion first: the export is one file per clip.",
+            )
+            return
+        folder = QFileDialog.getExistingDirectory(
+            self, "Export one glTF per clip to", load_str_setting(LAST_DIR_KEY)
+        )
+        if not folder:
+            return
+        try:
+            written = export_clips(
+                model,
+                self.session.visible_meshes(),
+                clips,
+                folder,
+                Path(model.name).stem,
+                palette=self.session.options.palette,
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.exception("exporting clips to %s", folder)
+            QMessageBox.critical(self, "Export failed", str(exc))
+            return
+        save_str_setting(LAST_DIR_KEY, folder)
+        self._status(f"Wrote {len(written)} clip files to {folder}")
 
     def export_textures(self) -> None:
         model = self.session.model

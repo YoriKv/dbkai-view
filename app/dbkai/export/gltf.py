@@ -11,8 +11,10 @@ which is what glTF expects. Units are the game's own.
 from __future__ import annotations
 
 import json
+import re
 import struct
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -329,6 +331,36 @@ def export_glb(
         b.buffer.append(0)
     gltf["buffers"][0]["byteLength"] = len(b.buffer)
     return _pack_glb(gltf, bytes(b.buffer))
+
+
+def clip_file_name(stem: str, clip: Clip) -> str:
+    """``<stem>__<clip>.glb``: the clip's name without its ``.dse`` suffix,
+    with anything a file system might dislike replaced."""
+    name = re.sub(r"\.dse\d*$", "", clip.name, flags=re.IGNORECASE)
+    name = re.sub(r"[^A-Za-z0-9_.-]+", "_", name).strip("_") or f"clip{clip.start}"
+    return f"{stem}__{name}.glb"
+
+
+def export_clips(
+    model: Model,
+    visible: list[MeshData] | None,
+    motions: list[tuple[BoundMotion, Clip]],
+    directory: str | Path,
+    stem: str,
+    palette: int = 0,
+) -> list[Path]:
+    """Write one ``.glb`` per clip into ``directory``, each holding the model
+    and that clip alone, and return the paths written. Every file repeats the
+    meshes and textures, which keeps each one self-contained and small next
+    to a whole motion set in one file."""
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for bound, clip in motions:
+        path = directory / clip_file_name(stem, clip)
+        path.write_bytes(export_glb(model, visible, [(bound, clip)], palette=palette))
+        written.append(path)
+    return written
 
 
 def _pack_glb(gltf: dict[str, Any], binary: bytes) -> bytes:

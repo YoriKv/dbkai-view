@@ -9,7 +9,7 @@ Built on Python + Qt (PySide6); runs on Windows, macOS and Linux.
 ```bash
 uv run dbkai [ROM.nds]       # the viewer; or: uv run python -m dbkai
 uv run python -m dbkai.cli list ROM.nds              # what is inside
-uv run python -m dbkai.cli extract ROM.nds out/ --motion   # everything as glTF + PNG
+uv run python -m dbkai.cli extract ROM.nds out/ --motion --per-clip   # everything as glTF + PNG
 uv run pytest                # the tests force Qt's offscreen platform
 ```
 

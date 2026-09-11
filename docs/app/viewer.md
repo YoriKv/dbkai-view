@@ -53,7 +53,10 @@ for textures that ship several (the game's alternate colour schemes).
 ## Exporting
 
 *File > Export glTF* writes the visible meshes as a `.glb` with the skeleton,
-the textures and either the current clip or every clip of the bound motion.
+the textures and either the current clip or every clip of the bound motion;
+*one file per clip* writes a folder of `<model>__<clip>.glb` files instead,
+each self-contained, since a whole motion set in one file runs to tens of
+megabytes.
 *Export Textures* writes every texture (every palette) as PNG. *Extract
 Everything* runs the command-line extractor over the whole ROM into a folder.
 The same operations exist headless: `python -m dbkai.cli --help`.

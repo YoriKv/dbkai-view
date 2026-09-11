@@ -2,9 +2,13 @@
 export models to glTF.
 
     python -m dbkai.cli list ROM [--kind model]
-    python -m dbkai.cli extract ROM OUT [--kind model] [--match TEXT]
+    python -m dbkai.cli extract ROM OUT [--kind model] [--match TEXT] [--motion]
+        [--per-clip]
     python -m dbkai.cli export ROM ASSET OUT.glb [--motion ASSET] [--clip NAME]
-        [--all-parts]
+        [--all-parts] [--per-clip]
+
+With ``--per-clip`` the destination is a folder and every clip becomes its
+own ``<model>__<clip>.glb`` next to a clip-free ``<model>.glb``.
 """
 
 from __future__ import annotations
@@ -13,7 +17,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from dbkai.export.gltf import export_glb
+from dbkai.export.gltf import export_clips, export_glb
 from dbkai.export.png import encode_png
 from dbkai.game import Asset, AssetKind, GameData
 from dbkai.model.animation import BoundMotion, Clip
@@ -43,7 +47,11 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def _export_asset(
-    game: GameData, asset: Asset, out_dir: Path, with_motion: bool
+    game: GameData,
+    asset: Asset,
+    out_dir: Path,
+    with_motion: bool,
+    per_clip: bool = False,
 ) -> Path | None:
     file = game.load_dse(asset)
     stem = Path(asset.name).stem
@@ -70,6 +78,10 @@ def _export_asset(
             if bound.matched:
                 motions += [(bound, c) for c in motion.clips]
     path = target / f"{stem}.glb"
+    if per_clip:
+        path.write_bytes(export_glb(model, None, []))
+        export_clips(model, None, motions, target, stem)
+        return path
     path.write_bytes(export_glb(model, None, motions))
     return path
 
@@ -81,7 +93,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
     failed = 0
     for a in assets:
         try:
-            path = _export_asset(game, a, out, args.motion)
+            path = _export_asset(game, a, out, args.motion, args.per_clip)
             print(f"{a.path} -> {path if path else 'textures only'}")
         except Exception as exc:  # noqa: BLE001 - keep going, report at the end
             failed += 1
@@ -113,11 +125,17 @@ def cmd_export(args: argparse.Namespace) -> int:
     if not args.all_parts:
         groups, parts = model.default_visibility()
         visible = model.visible_meshes(groups, parts)
+    count = len(visible if visible is not None else model.meshes)
+    if args.per_clip:
+        stem = Path(asset.name).stem
+        folder = Path(args.out)
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / f"{stem}.glb").write_bytes(export_glb(model, visible, []))
+        written = export_clips(model, visible, motions, folder, stem)
+        print(f"{folder}: {count} meshes, {len(written)} clip files")
+        return 0
     Path(args.out).write_bytes(export_glb(model, visible, motions))
-    print(
-        f"{args.out}: {len(visible if visible is not None else model.meshes)} meshes, "
-        f"{len(motions)} clips"
-    )
+    print(f"{args.out}: {count} meshes, {len(motions)} clips")
     return 0
 
 
@@ -141,6 +159,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="include the matching motions as animations",
     )
+    p.add_argument(
+        "--per-clip",
+        action="store_true",
+        help="with --motion, one glTF per clip instead of one file with them all",
+    )
     p.set_defaults(func=cmd_extract)
 
     p = sub.add_parser("export", help="export one model as glTF")
@@ -151,6 +174,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--clip", help="only clips whose name contains this text")
     p.add_argument(
         "--all-parts", action="store_true", help="every mesh, not the default selection"
+    )
+    p.add_argument(
+        "--per-clip",
+        action="store_true",
+        help="OUT is a folder; write one glTF per clip plus one without animation",
     )
     p.set_defaults(func=cmd_export)
 
