@@ -4,6 +4,8 @@
 
 - Actions tab: plays an action from the character's `.dsa` files, driving
   the clip, the frame and the part masks from the action's own commands
+- Fix: activating an action file in the Assets dock raised "not a DSE
+  file"; it now joins the Actions tab of the loaded model
 - Fix: binding a motion that is not one of the model's own choices (opened
   from disk, or by an action) crashed the Animation tab on the next change
 - Windows: `uv sync` after pulling; numpy and PyOpenGL are new dependencies

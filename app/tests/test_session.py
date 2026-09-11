@@ -150,3 +150,17 @@ def test_action_playback_drives_clip_and_frame(qapp):
     assert s.action_frame == 11
     s.set_action(None)
     assert not s.playing
+
+
+def test_action_file_asset_joins_the_action_list(qapp):
+    from dbkai.game import GameData
+    from dbkai.nds.rom import NdsRom
+
+    s = Session()
+    s.game = GameData(NdsRom(build_rom()))
+    s.load_asset(s.game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse"))
+    before = [f.name for f in s.action_files]
+    s.load_asset(s.game.find("/debug/110000_TALL_POWER.dsa"))
+    assert [f.name for f in s.action_files] == before + ["110000_TALL_POWER.dsa"]
+    s.load_asset(s.game.find("/debug/110000_TALL_POWER.dsa"))  # again: replaces
+    assert [f.name for f in s.action_files] == before + ["110000_TALL_POWER.dsa"]

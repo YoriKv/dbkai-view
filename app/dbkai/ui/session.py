@@ -120,6 +120,9 @@ class Session(QObject):
         if asset.kind in (AssetKind.MOTION, AssetKind.MOTION_SET):
             self.set_motion(self.game.load_motion(asset))
             return
+        if asset.kind is AssetKind.ACTIONS:
+            self.add_action_file(self.game.load_actions(asset))
+            return
         file = self.game.load_dse(asset)
         if not file.meshes and file.frame_count:
             self.set_motion(Motion(file, asset.name))
@@ -275,6 +278,20 @@ class Session(QObject):
         return self.model.skeleton.skin_matrices(world)
 
     # -- actions --------------------------------------------------------------
+
+    def add_action_file(self, file: dsa.DsaFile) -> None:
+        """Offer an action file's actions for the loaded model, replacing one
+        of the same name. Its motions resolve against the ROM's motion sets,
+        so any character can be posed with any file's actions."""
+        self.action_files = [f for f in self.action_files if f.name != file.name]
+        self.action_files.append(file)
+        if self.action is not None and self.action[0].name == file.name:
+            self.set_action(None)
+        self.actions_changed.emit()
+        if self.model is None:
+            self.status.emit(f"{file.name}: {len(file.actions)} actions; open a model")
+        else:
+            self.status.emit(f"{file.name}: {len(file.actions)} actions")
 
     def set_action(self, choice: tuple[dsa.DsaFile, dsa.Action] | None) -> None:
         """Play an action: its motion segments drive the clip and frame, its

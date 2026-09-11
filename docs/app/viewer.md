@@ -8,10 +8,12 @@ a panel can be added or removed without touching the others.
 
 ## Layout
 
-- **Assets** dock (`asset_tree.py`): every model, motion set and texture set
-  in the ROM as a tree of paths with a filter box, including the models and
-  motions embedded in the `sp/*.dsdz` story packages. Activating one loads
-  it.
+- **Assets** dock (`asset_tree.py`): every model, motion set, texture set
+  and action file in the ROM as a tree of paths with a filter box, including
+  the models and motions embedded in the `sp/*.dsdz` story packages.
+  Activating a model loads it, a motion binds it to the loaded model, and an
+  action file joins the Actions tab, so any character can be posed with any
+  file's actions.
 - **Viewport** (`viewport.py`): a `QOpenGLWidget` on a 3.3 core context
   through PyOpenGL. Orbit with the left button, pan with the right or middle,
   zoom with the wheel; *View > Reset camera* refits. Its backing and grid are
