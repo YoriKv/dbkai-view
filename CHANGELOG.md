@@ -4,6 +4,7 @@
 
 - Export actions
 - Shortcuts and shortcuts guide
+- A flatter icon, and the About box names the author and the repository
 - Lots of fixes
 
 ## v0.1.1 - 2026-09-10

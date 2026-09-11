@@ -25,6 +25,20 @@ def test_help_about_returns_under_the_suite(window) -> None:
     window.show_about()
 
 
+def test_help_about_credits_the_author_and_links_the_repository(
+    window, monkeypatch
+) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    from dbkai.ui.main_window import AUTHOR, HOMEPAGE
+
+    shown: list[str] = []
+    monkeypatch.setattr(QMessageBox, "about", lambda _p, _t, text: shown.append(text))
+    window.show_about()
+    assert AUTHOR in shown[0]
+    assert f"href='{HOMEPAGE}'" in shown[0]
+
+
 def test_the_file_argument_skips_the_program_name_and_options() -> None:
     from dbkai.app import named_file
 

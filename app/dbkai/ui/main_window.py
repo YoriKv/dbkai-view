@@ -71,6 +71,9 @@ _VIEW_TOGGLES = [
     ("bones", "&Skeleton", "S", "view/bones", False),
 ]
 
+AUTHOR = "Epi"
+HOMEPAGE = "https://github.com/YoriKv/dbkai-view"
+
 _ROM_FILTER = "DS ROM (*.nds);;All files (*)"
 _DSE_FILTER = "DSE files (*.dse *.dsez *.dse7);;All files (*)"
 
@@ -250,8 +253,13 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             f"About {APP_NAME}",
-            f"<b>{APP_NAME}</b> {__version__}<br>"
-            "A model extractor and viewer for DB Kai: Ultimate Butoden.",
+            f"<h2 style='margin-bottom:2px'>{APP_NAME} {__version__}</h2>"
+            "<p style='margin-top:0'>A model extractor and viewer for"
+            " DB Kai: Ultimate Butoden.</p>"
+            f"<p>By <b>{AUTHOR}</b><br>"
+            f"<a href='{HOMEPAGE}'>{HOMEPAGE}</a></p>"
+            "<p>Released under the MIT license. Built on Python and Qt via"
+            " PySide6, which is licensed under the LGPLv3.</p>",
         )
 
     def _status(self, text: str) -> None:
