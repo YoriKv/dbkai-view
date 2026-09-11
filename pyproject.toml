@@ -50,8 +50,8 @@ path = "app/dbkai/__init__.py"
 packages = ["app/dbkai"]
 
 [tool.uv]
-# The Windows venv is written by Windows uv over the \\wsl.localhost share, so
-# uv's cache and the venv sit on different filesystems and hardlinking fails —
+# The Windows venv is written by Windows uv into the WSL filesystem, so uv's
+# cache and the venv sit on different filesystems and hardlinking fails —
 # uv warns and falls back to copying. Ask for copy up front to silence that;
 # the cost is a one-time per-install copy.
 link-mode = "copy"

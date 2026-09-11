@@ -73,18 +73,20 @@ explicitly rather than relying on binary auto-detection.
 
 ## PyCharm
 
-The project opens from Windows at `Z:\dbkai` (the WSL `~/dev` share mapped to
-`Z:`), and the committed `.idea/` files configure it:
+The project opens from Windows through `Z:`, which maps to WSL's `/`.
+`.idea/` is not committed, so a fresh clone needs a one-time setup:
 
-- `app/` is the source root and `app/tests/` the test root, so `dbkai` imports
-  resolve; the venvs, caches and game-data folders are excluded.
-- The interpreter is the SDK named `Z:\dbkai\.venv\Scripts\python.exe`. On a
-  machine that has not registered it yet, add it once (*Settings > Python
-  Interpreter > Add > Existing*, pointing at that file) — PyCharm keeps the
-  project bound to that name.
-- The test runner is pytest, and docstrings are plain text.
-- `.run/` holds shared run configurations: **DBKai** launches
-  `python -m dbkai`, **Tests** runs `app/tests`.
+- *Settings > Python Interpreter > Add > Existing*: the checkout's
+  `.venv\Scripts\python.exe`.
+- *Settings > Project Structure*: `app/` is the source root and `app/tests/`
+  the test root, so `dbkai` imports resolve; exclude `.venv`, `.venv-linux`,
+  `.pytest_cache`, `.ruff_cache`, `build`, `dist`, `tmp`, `reference` and
+  `extracted`.
+- *Settings > Tools > Python Integrated Tools*: the test runner is pytest, and
+  docstrings are plain text.
+
+`.run/` holds shared run configurations: **DBKai** launches `python -m dbkai`,
+**Tests** runs `app/tests`.
 
 ## Tests
 

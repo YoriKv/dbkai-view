@@ -50,17 +50,8 @@ coverage.xml
 *_rc.py
 ui_*.py
 
-# Editor / OS. `.idea/` is ignored as a whole, except the files that make a
-# fresh clone open correctly in PyCharm: the module, its source roots and the
-# interpreter it names. Machine-local state (workspace.xml, shelf/) stays out.
-.idea/*
-!.idea/dbkai.iml
-!.idea/modules.xml
-!.idea/misc.xml
-!.idea/vcs.xml
-!.idea/encodings.xml
-!.idea/inspectionProfiles/
-!.idea/.gitignore
+# Editor / OS
+.idea/
 .vscode/
 .DS_Store
 
