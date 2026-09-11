@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.2 - unreleased
+## v0.1.2 - 2026-09-11
 
 - Export actions
 - Shortcuts and shortcuts guide
