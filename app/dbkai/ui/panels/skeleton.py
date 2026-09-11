@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6.QtWidgets import QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
 
+from dbkai.ui.elided import show_elided_text
 from dbkai.ui.session import Session
 
 
@@ -14,6 +15,7 @@ class SkeletonPanel(QWidget):
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Bone", "Rest position"])
         self.tree.setColumnWidth(0, 200)
+        show_elided_text(self.tree)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.tree)

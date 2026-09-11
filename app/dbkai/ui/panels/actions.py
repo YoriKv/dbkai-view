@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from dbkai.formats import dsa
+from dbkai.ui.elided import show_elided_text
 from dbkai.ui.panels.transport import Transport
 from dbkai.ui.session import Session
 
@@ -52,6 +53,7 @@ class ActionsPanel(QWidget):
         self.tree.setHeaderLabels(_ACTION_COLUMNS)
         self.tree.setColumnWidth(0, 110)
         self.tree.setRootIsDecorated(False)
+        show_elided_text(self.tree)
         self.info = QLabel("")
         self.info.setWordWrap(True)
         self.clear = QPushButton("No action")

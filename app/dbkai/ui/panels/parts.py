@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from dbkai.ui.elided import show_elided_text
 from dbkai.ui.session import Session
 
 _ROLE = Qt.ItemDataRole.UserRole
@@ -33,6 +34,7 @@ class PartsPanel(QWidget):
         self.tree = _PartsTree()
         self.tree.setHeaderLabels(["Item", "Meshes"])
         self.tree.setColumnWidth(0, 220)
+        show_elided_text(self.tree)
         buttons = QHBoxLayout()
         self.reset = QPushButton("Rest")
         self.everything = QPushButton("Show all")

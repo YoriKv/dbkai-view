@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from dbkai.model.scene import TextureData
+from dbkai.ui.elided import show_elided_text
 from dbkai.ui.session import Session
 
 
@@ -35,6 +36,7 @@ class MaterialsPanel(QWidget):
         self.textures.setIconSize(QSize(96, 96))
         self.materials = QTreeWidget()
         self.materials.setHeaderLabels(["Material", "Texture", "Part", "Wrap"])
+        show_elided_text(self.materials)
         form = QFormLayout()
         form.addRow("Palette", self.palette)
         layout = QVBoxLayout(self)

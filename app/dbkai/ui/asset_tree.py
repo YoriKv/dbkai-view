@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from dbkai.game import Asset
+from dbkai.ui.elided import show_elided_text
 from dbkai.ui.session import Session
 
 log = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class AssetTree(QWidget):
         self.tree.setHeaderLabels(["Name", "Kind", "Size"])
         self.tree.setColumnWidth(0, 260)
         self.tree.setUniformRowHeights(True)
+        show_elided_text(self.tree)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.filter)

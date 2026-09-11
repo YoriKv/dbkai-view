@@ -24,6 +24,10 @@ a panel can be added or removed without touching the others.
 - **Model** dock: the open model's name over five tabs (`panels/`, one
   module each): *Parts*, *Animation*, *Actions*, *Materials*, *Skeleton*.
 
+Every multi-column tree uses the `ElidedTips` delegate (`elided.py`): a cell
+cut off by its column shows its full text on hover, above the row's own
+tooltip if it has one.
+
 ## Keys
 
 Every key is the shortcut of a menu action, and *Help > Shortcuts* (`F1`,
