@@ -121,13 +121,19 @@ def test_actions_panel_lists_and_selects(qtbot):
     window = _window(qtbot)
     window.session.action_files = [dsa.parse(build_actions(), "fixture.dsa")]
     window.session.actions_changed.emit()
-    tree = window.actions.tree
-    assert tree.topLevelItemCount() == 1
-    top = tree.topLevelItem(0)
-    assert top.childCount() == 2 and top.child(0).text(0) == "1000"
-    tree.setCurrentItem(top.child(0))
+    panel = window.actions
+    assert panel.source.count() == 1 and panel.source.currentText() == "fixture.dsa"
+    tree = panel.tree
+    assert tree.topLevelItemCount() == 2 and tree.topLevelItem(0).text(0) == "1000"
+    tree.setCurrentItem(tree.topLevelItem(0))
     assert window.session.action is not None
-    assert "0x8023033f" in window.actions.info.text()
-    assert window.actions.slider.maximum() == 29
-    window.actions.clear.click()
-    assert window.session.action is None
+    assert "0x8023033f" in panel.info.text()
+    assert panel.slider.maximum() == 29
+    # Switching while playing keeps playing, as the Animation tab does.
+    panel.play.setChecked(True)
+    assert window.session.playing
+    tree.setCurrentItem(tree.topLevelItem(1))
+    assert window.session.action[1].action_id == 2000 and window.session.playing
+    panel.clear.click()
+    assert window.session.action is None and not window.session.playing
+    assert tree.currentItem() is None

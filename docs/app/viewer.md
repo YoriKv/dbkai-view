@@ -40,16 +40,17 @@ neutral face, open hands). That preset names a character's groups and
 parts; when it would hide every mesh of a model — an accessory such as a
 cap, a mask or a hand model keeps its own group numbers and the game draws
 it under the mask of the character wearing it — the model shows everything
-instead. The **Actions** tab lists that table's presets
-and the character's actions from its `.dsa` files. Choosing an action plays
-it: its motion command names the clips (of the body's motion set) and the
-take frames, its visibility and colour commands the masks, all driven by the
-action's own frame counter and transport, so an attack shows its fists and a
-damage reaction its damage face exactly when the game would. The tab has
-its own slider and *Play* for the action's frames, a *Plays* column with the
-clip numbers each action uses, and a line naming the clip, take frame and
-mask at the current frame. Scrubbing a clip in the Animation tab, or picking
-another motion source, drops the action again. A model opened from a file,
+instead. The **Actions** tab is laid out like the Animation tab: a *Source*
+chooser with the character's `.dsa` files and that table's presets, a list
+of the source's actions (id, frames, the clip numbers it plays), and the
+transport. Choosing an action plays it: its motion command names the clips
+(of the body's motion set) and the take frames, its visibility and colour
+commands the masks, all driven by the action's own frame counter, so an
+attack shows its fists and a damage reaction its damage face exactly when
+the game would. Switching actions while playing keeps playing, as switching
+clips does; a line names the clip, take frame and mask at the current
+frame. Scrubbing a clip in the Animation tab, or picking another motion
+source, drops the action again. A model opened from a file,
 with no ROM to read the table from, shows everything.
 
 **Animation.** A character model automatically binds the motion set of its

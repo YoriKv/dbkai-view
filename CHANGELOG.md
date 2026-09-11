@@ -3,7 +3,9 @@
 ## Unreleased
 
 - Actions tab: plays an action from the character's `.dsa` files, driving
-  the clip, the frame and the part masks from the action's own commands
+  the clip, the frame and the part masks from the action's own commands;
+  laid out like the Animation tab, with a source chooser and a list, and
+  switching actions keeps playing
 - Fix: activating an action file in the Assets dock raised "not a DSE
   file"; it now joins the Actions tab of the loaded model
 - Fix: binding a motion that is not one of the model's own choices (opened

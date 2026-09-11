@@ -430,16 +430,20 @@ def motion_label(motion: Motion | None) -> str:
 
 
 class ActionsPanel(QWidget):
-    """The character's actions from its ``.dsa`` files, and the game's
-    visibility presets. Choosing an action plays it: the clip, the frame and
-    the part masks all come from its commands."""
+    """The character's actions, laid out like the Animation tab: a source
+    (one of the model's ``.dsa`` files, or the game's visibility presets), a
+    list of what it holds, and the transport. Choosing an action plays it:
+    the clip, the frame and the part masks all come from its commands, and
+    switching actions keeps the transport running."""
 
     def __init__(self, session: Session, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.session = session
+        self.source = QComboBox()
         self.tree = QTreeWidget()
         self.tree.setHeaderLabels(["Action", "Frames", "Plays"])
-        self.tree.setColumnWidth(0, 150)
+        self.tree.setColumnWidth(0, 110)
+        self.tree.setRootIsDecorated(False)
         self.info = QLabel("")
         self.info.setWordWrap(True)
         self.clear = QPushButton("No action")
@@ -447,18 +451,24 @@ class ActionsPanel(QWidget):
         self.frame_label = QLabel("–")
         self.play = QPushButton("Play")
         self.play.setCheckable(True)
+        form = QFormLayout()
+        form.addRow("Source", self.source)
         row = QHBoxLayout()
-        row.addWidget(self.clear)
         row.addWidget(self.play)
+        row.addWidget(self.clear)
         frame_row = QHBoxLayout()
         frame_row.addWidget(self.slider, 1)
         frame_row.addWidget(self.frame_label)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.addLayout(form)
         layout.addWidget(self.tree, 1)
         layout.addLayout(frame_row)
         layout.addLayout(row)
         layout.addWidget(self.info)
+        self._building = False
+        self._sources: list[str] = []
+        self.source.currentIndexChanged.connect(self._source_chosen)
         self.tree.currentItemChanged.connect(self._chosen)
         self.clear.clicked.connect(lambda: session.set_action(None))
         self.slider.valueChanged.connect(session.set_action_frame)
@@ -467,16 +477,47 @@ class ActionsPanel(QWidget):
         session.frame_changed.connect(self._frame)
         session.visibility_changed.connect(self._frame)
         session.playing_changed.connect(self._playing)
-        self._building = False
+
+    # -- building -------------------------------------------------------------
 
     def rebuild(self) -> None:
-        self._building = True
-        self.tree.clear()
+        """Refill the source list when the files changed; otherwise only
+        follow the session's current action."""
+        names = [f.name for f in self.session.action_files]
         presets = self.session.game.visibility_presets if self.session.game else {}
         if presets:
-            top = QTreeWidgetItem(["Presets (parameter table)", str(len(presets)), ""])
-            self.tree.addTopLevelItem(top)
-            for state, mask in sorted(presets.items()):
+            names.append(_PRESETS)
+        wanted = self._wanted_source(names)
+        if names != self._sources:
+            self._sources = names
+            with QSignalBlocker(self.source):
+                self.source.clear()
+                for n in names:
+                    self.source.addItem(n if n != _PRESETS else "Presets", n)
+        if wanted is not None and self.source.currentData() != wanted:
+            with QSignalBlocker(self.source):
+                self.source.setCurrentIndex(names.index(wanted))
+            self._fill(wanted)
+        elif self.tree.topLevelItemCount() == 0 and names:
+            self._fill(self.source.currentData())
+        self._select_current()
+        self._frame()
+
+    def _wanted_source(self, names: list[str]) -> str | None:
+        """The source to show: the file of the running action, else what is
+        shown now if it still exists, else the first."""
+        if self.session.action is not None:
+            return self.session.action[0].name
+        current = self.source.currentData()
+        if current in names:
+            return current
+        return names[0] if names else None
+
+    def _fill(self, name: str | None) -> None:
+        self._building = True
+        self.tree.clear()
+        if name == _PRESETS and self.session.game is not None:
+            for state, mask in sorted(self.session.game.visibility_presets.items()):
                 groups, parts = dsa.split_mask(mask)
                 item = QTreeWidgetItem(
                     [
@@ -486,21 +527,45 @@ class ActionsPanel(QWidget):
                     ]
                 )
                 item.setData(0, _ROLE, ("preset", mask))
-                top.addChild(item)
-        for file in self.session.action_files:
-            top = QTreeWidgetItem([file.name, str(len(file.actions)), ""])
-            self.tree.addTopLevelItem(top)
-            for action in file.actions:
-                item = QTreeWidgetItem(
-                    [str(action.action_id), str(action.duration), _plays(file, action)]
-                )
-                item.setData(0, _ROLE, ("action", file, action))
-                top.addChild(item)
-                if self.session.action is not None and self.session.action[1] is action:
-                    self.tree.setCurrentItem(item)
-            top.setExpanded(True)
+                self.tree.addTopLevelItem(item)
+        else:
+            for file in self.session.action_files:
+                if file.name != name:
+                    continue
+                for action in file.actions:
+                    item = QTreeWidgetItem(
+                        [
+                            str(action.action_id),
+                            str(action.duration),
+                            _plays(file, action),
+                        ]
+                    )
+                    item.setData(0, _ROLE, ("action", file, action))
+                    self.tree.addTopLevelItem(item)
         self._building = False
-        self._frame()
+
+    def _select_current(self) -> None:
+        action = self.session.action
+        self._building = True
+        try:
+            if action is None:
+                self.tree.setCurrentItem(None)
+                return
+            for i in range(self.tree.topLevelItemCount()):
+                item = self.tree.topLevelItem(i)
+                data = item.data(0, _ROLE)
+                if data and data[0] == "action" and data[2] is action[1]:
+                    if self.tree.currentItem() is not item:
+                        self.tree.setCurrentItem(item)
+                    return
+        finally:
+            self._building = False
+
+    # -- choosing -------------------------------------------------------------
+
+    def _source_chosen(self, _index: int) -> None:
+        self._fill(self.source.currentData())
+        self._select_current()
 
     def _chosen(
         self, item: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
@@ -514,6 +579,8 @@ class ActionsPanel(QWidget):
             self.session.apply_mask(choice[1])
         else:
             self.session.set_action((choice[1], choice[2]))
+
+    # -- transport ------------------------------------------------------------
 
     def _frame(self, *_args: object) -> None:
         action = self.session.action
@@ -543,7 +610,7 @@ class ActionsPanel(QWidget):
 
     def _play_toggled(self, on: bool) -> None:
         if on:
-            self.session.play()
+            self.session.play(from_start=True)
         else:
             self.session.stop()
 
@@ -551,6 +618,10 @@ class ActionsPanel(QWidget):
         with QSignalBlocker(self.play):
             self.play.setChecked(playing)
         self.play.setText("Pause" if playing else "Play")
+
+
+#: Source entry that lists the parameter table's visibility presets.
+_PRESETS = "presets"
 
 
 def _plays(file: dsa.DsaFile, action: dsa.Action) -> str:

@@ -297,12 +297,15 @@ class Session(QObject):
         """Play an action: its motion segments drive the clip and frame, its
         visibility and colour commands the masks, frame by frame of the
         action. ``None`` goes back to free clip scrubbing."""
+        keep_playing = self.playing and choice is not None
         self.stop()
         self.action = choice
         self.action_frame = 0
         self.actions_changed.emit()
         if choice is not None:
             self.set_action_frame(0)
+        if keep_playing:
+            self.play()
 
     def set_action_frame(self, frame: int) -> None:
         if self.action is None:
