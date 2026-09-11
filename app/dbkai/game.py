@@ -8,12 +8,15 @@ The relations it knows:
 - an ``nt_`` model has no texture data of its own; its textures are in the
   sibling entry without the prefix;
 - a character model's motions are the ``smot/sm_<body>_*.dse`` set for its
-  body type, which is the ``<id> // 10000 * 10000`` of the model's numeric id.
+  body type, which is the ``<id> // 10000 * 10000`` of the model's numeric id;
+- the story packages (``sp/*.dsdz``) embed models and motions, which are
+  listed as assets inside the package.
 """
 
 from __future__ import annotations
 
 import re
+import struct
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
@@ -49,6 +52,9 @@ class Asset:
     rom_file: RomFile | None = None
     entry: ArchiveEntry | None = None
     packed_size: int | None = None
+    #: For a file embedded in a package: the package and the byte offset.
+    container: Asset | None = None
+    offset: int = 0
 
     @property
     def name(self) -> str:
@@ -120,11 +126,41 @@ class GameData:
                     entry=e,
                     packed_size=e.packed_size,
                 )
+        for f in self.rom.files:
+            if f.name.lower().endswith(".dsdz"):
+                yield from self._embedded(f)
+
+    def _embedded(self, f: RomFile) -> Iterator[Asset]:
+        """The DSE files inside a story package, found by their magic."""
+        package = Asset(str(f.path), AssetKind.OTHER, f.size, rom_file=f)
+        try:
+            data = unwrap(self.rom.read(f))
+        except compression.CompressionError:
+            return
+        for m in re.finditer(re.escape(dse.MAGIC), data):
+            start = m.start()
+            if start + dse.HEADER_SIZE > len(data):
+                continue
+            size = struct.unpack_from("<I", data, start + 0x30 + 12 * 4)[0]
+            if size < dse.HEADER_SIZE or start + size > len(data):
+                continue
+            try:
+                file = dse.parse(data[start : start + size])
+            except dse.DseError:
+                continue
+            kind = classify(file)
+            if kind is AssetKind.OTHER:
+                continue
+            name = file.name or f"{start:#x}.dse"
+            yield Asset(f"{f.path}/{name}", kind, size, container=package, offset=start)
 
     # -- reading --------------------------------------------------------------
 
     def read(self, asset: Asset) -> bytes:
         """The asset's bytes, unpacked from whatever wrapped them."""
+        if asset.container is not None:
+            package = self.read(asset.container)
+            return package[asset.offset : asset.offset + asset.size]
         if asset.entry is not None:
             assert self.archive is not None
             data = self.archive.read(asset.entry)

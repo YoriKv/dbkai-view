@@ -101,6 +101,9 @@ class MainWindow(QMainWindow):
 
         self.theme = self._build_menus()
         self.statusBar().showMessage("Open a ROM (File > Open ROM) or a DSE file.")
+        self.resizeDocks(
+            [self.assets_dock, self.model_dock], [340, 380], Qt.Orientation.Horizontal
+        )
         self._restore_layout()
         for name, _label, key, default in _VIEW_TOGGLES:
             self.session.set_option(name, load_bool_setting(key, default))

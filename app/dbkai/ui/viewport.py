@@ -325,8 +325,11 @@ class Viewport(QOpenGLWidget):
         model = self.session.model
         if model is None:
             return
-        skin = self.session.skin_matrices()
         world = self.session.world_matrices()
+        skin = None
+        if world is not None:
+            world = self._billboard(world)
+            skin = model.skeleton.skin_matrices(world)
         for gm in self._meshes:
             pos = gm.mesh.positions if skin is None else scene.skin(gm.mesh, skin)
             data = _interleave(gm.mesh, pos)
@@ -348,6 +351,29 @@ class Viewport(QOpenGLWidget):
             GL.GL_ARRAY_BUFFER, max(data.nbytes, 4), data, GL.GL_DYNAMIC_DRAW
         )
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+
+    def _billboard(self, world: np.ndarray) -> np.ndarray:
+        """Bones flagged as billboards (the ``BL_`` hair pieces) keep their
+        position and scale but take the camera's orientation, as the game's
+        draw routine does for them."""
+        model = self.session.model
+        if model is None:
+            return world
+        sk = model.skeleton
+        if not any(f & 0x04 for f in sk.flags):
+            return world
+        world = world.copy()
+        face = np.eye(4)
+        face[:3, :3] = self.camera.view()[:3, :3].T
+        for i, flags in enumerate(sk.flags):
+            if flags & 0x04:
+                m = world[i]
+                scale = float(np.linalg.norm(m[:3, 0])) or 1.0
+                b = face.copy()
+                b[:3, :3] *= scale
+                b[:3, 3] = m[:3, 3]
+                world[i] = b
+        return world
 
     # -- drawing --------------------------------------------------------------
 
@@ -486,7 +512,12 @@ class Viewport(QOpenGLWidget):
             self.camera.target = self.camera.target - right * dx * k + up * dy * k
         else:
             return
+        self._dirty_pose = self._has_billboards()
         self.update()
+
+    def _has_billboards(self) -> bool:
+        model = self.session.model
+        return model is not None and any(f & 0x04 for f in model.skeleton.flags)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 - Qt override
         steps = event.angleDelta().y() / 120

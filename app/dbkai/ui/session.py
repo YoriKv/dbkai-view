@@ -140,7 +140,10 @@ class Session(QObject):
             f"{sum(m.vertex_count for m in model.meshes)} vertices, "
             f"{len(model.skeleton)} bones, {len(model.textures)} textures"
         )
-        if self.game is not None and asset is not None:
+        if model.source.frame_count > 1:
+            # A prop that carries its own animation frames.
+            self.set_motion(Motion(model.source, model.name))
+        elif self.game is not None and asset is not None:
             default = self.game.motion_set_for(asset)
             if default is not None:
                 try:

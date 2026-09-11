@@ -9,7 +9,9 @@ a panel can be added or removed without touching the others.
 ## Layout
 
 - **Assets** dock (`asset_tree.py`): every model, motion set and texture set
-  in the ROM as a tree of paths with a filter box. Activating one loads it.
+  in the ROM as a tree of paths with a filter box, including the models and
+  motions embedded in the `sp/*.dsdz` story packages. Activating one loads
+  it.
 - **Viewport** (`viewport.py`): a `QOpenGLWidget` on a 3.3 core context
   through PyOpenGL. Orbit with the left button, pan with the right or middle,
   zoom with the wheel; *View > Reset camera* refits. Its backing and grid are
@@ -39,9 +41,11 @@ and without its armour), so they start on and overlap until one is turned
 off. *Show all* turns everything on.
 
 **Animation.** A character model automatically binds the motion set of its
-body type. The tab lists the set's clips; the slider scrubs, *Play* runs at
-the game's 60 frames per second times the speed. Any other motion file can be
-opened from disk and bound by bone name.
+body type; a prop that carries its own frames plays those. The tab lists the
+clips; the slider scrubs, *Play* runs at the game's 60 frames per second
+times the speed. Any other motion file can be opened from disk and bound by
+bone name. Billboard bones (the `BL_` hair pieces) face the camera as they do
+in the game.
 
 **Materials.** Textures with their decoded preview, and the palette spinner
 for textures that ship several (the game's alternate colour schemes).

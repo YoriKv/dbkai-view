@@ -68,12 +68,17 @@ def rom_bytes():
             ("/mdl/chr", "nt_101100_hero.dse", build_model(), False),
         ]
     )
+    import lzma
+
+    package = bytes(0x20) + build_motion() + bytes(7) + build_model()
+    packed = lzma.compress(package, format=lzma.FORMAT_ALONE)
     return make_rom(
         {
             "archiveDBK.dsa": archive,
             "sm_100000_NORMAL.dse": build_motion(),
             "readme.txt": b"hi",
             "debug/cube.dse7": lz77_compress_literal(build_model()),
+            "debug/300000.dsdz": packed,
         }
     )
 
@@ -84,6 +89,7 @@ def test_rom_lists_files(rom_bytes):
     paths = sorted(str(f.path) for f in rom.files)
     assert paths == [
         "/archiveDBK.dsa",
+        "/debug/300000.dsdz",
         "/debug/cube.dse7",
         "/readme.txt",
         "/sm_100000_NORMAL.dse",
@@ -102,6 +108,8 @@ def test_game_catalogue_and_relations(rom_bytes):
         "/archiveDBK.dsa/mdl/chr/nt_101100_hero.dse": AssetKind.MODEL,
         "/sm_100000_NORMAL.dse": AssetKind.MOTION_SET,
         "/debug/cube.dse7": AssetKind.MODEL,
+        "/debug/300000.dsdz/sm_fixture.dse": AssetKind.MOTION_SET,
+        "/debug/300000.dsdz/fixture.dse": AssetKind.MODEL,
     }
     hero = game.find("/archiveDBK.dsa/mdl/chr/101100_hero.dse")
     assert hero.numeric_id == 101100 and hero.body_type == 100000
@@ -112,4 +120,11 @@ def test_game_catalogue_and_relations(rom_bytes):
     assert model.name == "101100_hero.dse" and len(model.meshes) == 2
     cube = game.load_model(game.find("/debug/cube.dse7"))
     assert len(cube.meshes) == 2
+    embedded = game.find("/debug/300000.dsdz/fixture.dse")
+    assert embedded.container is not None and embedded.offset > 0
+    assert len(game.load_model(embedded).meshes) == 2
+    assert (
+        game.load_motion(game.find("/debug/300000.dsdz/sm_fixture.dse")).frame_count
+        == 4
+    )
     assert unwrap(b"DSE\0" + bytes(100)) == b"DSE\0" + bytes(100)
