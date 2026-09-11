@@ -25,8 +25,11 @@ from PySide6.QtWidgets import (
 from dbkai import APP_NAME, __version__
 from dbkai.export.gltf import export_clips, export_glb
 from dbkai.export.png import encode_png
+from dbkai.formats import dsa
 from dbkai.game import AssetKind
-from dbkai.model.animation import BoundMotion, Clip
+from dbkai.model.action import action_take
+from dbkai.model.animation import BoundMotion, Clip, Take
+from dbkai.model.scene import MeshData, Model
 from dbkai.ui.asset_tree import AssetTree
 from dbkai.ui.panels import (
     ActionsPanel,
@@ -148,6 +151,9 @@ class MainWindow(QMainWindow):
         self._action(
             file_menu, "Export glTF (one file per c&lip)…", self.export_gltf_per_clip
         )
+        self._action(
+            file_menu, "Export glTF (current a&ction)…", self.export_gltf_action
+        )
         self._action(file_menu, "Export &Textures…", self.export_textures)
         self._action(file_menu, "Extract &Everything…", self.extract_all)
         file_menu.addSeparator()
@@ -262,9 +268,48 @@ class MainWindow(QMainWindow):
         if model is None:
             QMessageBox.information(self, "Export glTF", "Load a model first.")
             return
-        suggested = str(
-            Path(load_str_setting(LAST_DIR_KEY)) / (Path(model.name).stem + ".glb")
+        self._write_glb(
+            model,
+            self.session.visible_meshes(),
+            self._current_clips(every_clip),
+            [],
+            Path(model.name).stem,
         )
+
+    def export_gltf_action(self) -> None:
+        """The chosen action as one animation: its poses frame by frame and
+        its part switches as node visibility, so the file carries every mesh
+        not hidden by hand."""
+        s = self.session
+        if s.model is None:
+            QMessageBox.information(self, "Export glTF", "Load a model first.")
+            return
+        if s.action is None:
+            QMessageBox.information(
+                self, "Export glTF", "Choose an action in the Actions tab first."
+            )
+            return
+        file, action = s.action
+        take = action_take(
+            s.model.skeleton,
+            file,
+            action,
+            s.game.motion_set if s.game is not None else lambda _set_id: None,
+            dsa.join_mask(*s.rest_visibility(s.model)),
+        )
+        meshes = [m for m in s.model.meshes if m.uid not in s.visibility.hidden]
+        stem = f"{Path(s.model.name).stem}__{take.name}"
+        self._write_glb(s.model, meshes, [], [take], stem)
+
+    def _write_glb(
+        self,
+        model: Model,
+        meshes: list[MeshData],
+        clips: list[tuple[BoundMotion, Clip]],
+        takes: list[Take],
+        stem: str,
+    ) -> None:
+        suggested = str(Path(load_str_setting(LAST_DIR_KEY)) / (stem + ".glb"))
         path, _ = QFileDialog.getSaveFileName(
             self, "Export glTF", suggested, "glTF binary (*.glb)"
         )
@@ -273,9 +318,10 @@ class MainWindow(QMainWindow):
         try:
             data = export_glb(
                 model,
-                self.session.visible_meshes(),
-                self._current_clips(every_clip),
+                meshes,
+                clips,
                 palette=self.session.options.palette,
+                takes=takes,
             )
             Path(path).write_bytes(data)
         except Exception as exc:  # noqa: BLE001

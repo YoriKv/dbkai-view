@@ -73,7 +73,17 @@ for textures that ship several (the game's alternate colour schemes).
 the textures and either the current clip or every clip of the bound motion;
 *one file per clip* writes a folder of `<model>__<clip>.glb` files instead,
 each self-contained, since a whole motion set in one file runs to tens of
-megabytes.
+megabytes. *current action* writes the action chosen in the Actions tab as
+one animation named `<action set>_<action id>`: its pose frame by frame
+(a frame no motion covers holds the pose before it) and its part switches.
+The file carries every mesh not hidden by hand, since the action shows and
+hides them. glTF ignores the transform of a skinned mesh's node, so a
+switch cannot be a scale to zero; it is a `KHR_node_visibility` value keyed
+through `KHR_animation_pointer` with step interpolation, and an importer
+without those extensions shows every part throughout. Colour scheme changes
+are not written; the textures use the palette on screen. The file carries
+only the materials and textures its meshes use, and passes the Khronos glTF
+validator.
 *Export Textures* writes every texture (every palette) as PNG. *Extract
 Everything* runs the command-line extractor over the whole ROM into a folder.
 The same operations exist headless: `python -m dbkai.cli --help`.

@@ -1,11 +1,24 @@
 """Write a :class:`~dbkai.model.scene.Model` as a binary glTF 2.0 file.
 
 One ``.glb`` holds the meshes, the skeleton as a skin, every texture as an
-embedded PNG, and any bound motion clips as animations sampled per frame. The
-result opens in Blender, three.js, Godot and the other glTF importers.
+embedded PNG, and any bound motion clips or actions as animations sampled
+per frame. The result opens in Blender, three.js, Godot and the other glTF
+importers.
+
+An action also switches parts on and off. glTF ignores the transform of a
+skinned mesh's node, so a part cannot be hidden by scaling it; the switches
+are written as ``KHR_node_visibility`` values keyed through
+``KHR_animation_pointer`` with step interpolation. An importer without those
+extensions shows every part throughout.
 
 Coordinate system: the game's models are Y-up and the exporter keeps them so,
 which is what glTF expects. Units are the game's own.
+
+The output passes the Khronos glTF validator. That takes a few departures
+from the game's data: a skeleton with several root bones hangs under one
+empty node, since a skin's joints need a common root; a vertex's weights are
+scaled to sum to one, where the game's fixed-point ones fall a little short;
+and a slot with no weight points at joint 0.
 """
 
 from __future__ import annotations
@@ -21,8 +34,8 @@ import numpy as np
 
 from dbkai.export.png import encode_png
 from dbkai.model import math3d
-from dbkai.model.animation import BoundMotion, Clip
-from dbkai.model.scene import MeshData, Model
+from dbkai.model.animation import BoundMotion, Clip, Take
+from dbkai.model.scene import MaterialData, MeshData, Model
 
 #: The game runs at 60 frames per second; motions are keyed every frame.
 FRAME_RATE = 60.0
@@ -93,13 +106,16 @@ def export_glb(
     motions: list[tuple[BoundMotion, Clip]] | None = None,
     palette: int = 0,
     all_meshes_as_nodes: bool = True,
+    takes: list[Take] | None = None,
 ) -> bytes:
     """Build the ``.glb`` bytes.
 
     ``visible`` restricts the meshes written (default: all of them, each as
     its own node so a viewer can toggle parts). ``motions`` are ``(bound
     motion, clip)`` pairs to write as animations; the clip's frames become
-    keyframes at :data:`FRAME_RATE`.
+    keyframes at :data:`FRAME_RATE`. ``takes`` are further animations, such
+    as actions, written after the clips; a take's masks key the visibility
+    of every mesh written.
     """
     b = _Builder()
     meshes = visible if visible is not None else model.meshes
@@ -107,19 +123,26 @@ def export_glb(
     n_bones = len(skeleton)
 
     # -- textures and materials -----------------------------------------------
+    # Each is written on first use, so the file carries only what its meshes
+    # draw with.
     images: list[dict[str, Any]] = []
     textures: list[dict[str, Any]] = []
     samplers: list[dict[str, Any]] = []
-    tex_index: dict[int, int] = {}
-    for t in model.textures:
-        if not t.available:
-            continue
-        rgba = t.rgba(min(palette, t.palette_count - 1))
-        png = encode_png(rgba.width, rgba.height, rgba.pixels)
-        images.append(
-            {"bufferView": b.view(png), "mimeType": "image/png", "name": t.name}
-        )
-        tex_index[t.index] = len(images) - 1
+    image_index: dict[int, int | None] = {}
+
+    def image(index: int) -> int | None:
+        if index not in image_index:
+            t = model.textures[index]
+            if not t.available:
+                image_index[index] = None
+            else:
+                rgba = t.rgba(min(palette, t.palette_count - 1))
+                png = encode_png(rgba.width, rgba.height, rgba.pixels)
+                images.append(
+                    {"bufferView": b.view(png), "mimeType": "image/png", "name": t.name}
+                )
+                image_index[index] = len(images) - 1
+        return image_index[index]
 
     def sampler(repeat_s: bool, repeat_t: bool, flip_s: bool, flip_t: bool) -> int:
         def wrap(repeat: bool, flip: bool) -> int:
@@ -137,10 +160,31 @@ def export_glb(
             samplers.append(key)
         return samplers.index(key)
 
+    def texture(m: MaterialData) -> int | None:
+        source = image(m.texture) if m.texture is not None else None
+        if source is None:
+            return None
+        entry = {
+            "sampler": sampler(m.repeat_s, m.repeat_t, m.flip_s, m.flip_t),
+            "source": source,
+        }
+        if entry not in textures:
+            textures.append(entry)
+        return textures.index(entry)
+
     materials: list[dict[str, Any]] = []
-    for m in model.materials:
+    material_index: dict[tuple[int, bool], int] = {}
+
+    def material_for(mesh: MeshData) -> int | None:
+        """The mesh's material; a double-sided mesh gets its own instance."""
+        if mesh.material >= len(model.materials):
+            return None
+        key = (mesh.material, mesh.double_sided)
+        if key in material_index:
+            return material_index[key]
+        m = model.materials[mesh.material]
         mat: dict[str, Any] = {
-            "name": m.name,
+            "name": m.name + ("_2s" if mesh.double_sided else ""),
             "pbrMetallicRoughness": {
                 "baseColorFactor": [1, 1, 1, m.alpha / 31],
                 "metallicFactor": 0,
@@ -148,38 +192,21 @@ def export_glb(
             },
             "extensions": {"KHR_materials_unlit": {}},
         }
-        if m.texture is not None and m.texture in tex_index:
-            textures.append(
-                {
-                    "sampler": sampler(m.repeat_s, m.repeat_t, m.flip_s, m.flip_t),
-                    "source": tex_index[m.texture],
-                }
-            )
-            mat["pbrMetallicRoughness"]["baseColorTexture"] = {
-                "index": len(textures) - 1
-            }
+        if mesh.double_sided:
+            mat["doubleSided"] = True
+        tex = texture(m)
+        if tex is not None:
+            mat["pbrMetallicRoughness"]["baseColorTexture"] = {"index": tex}
             src = model.textures[m.texture]
             if src.color0_transparent or src.format.name in ("A3I5", "A5I3"):
                 mat["alphaMode"] = "MASK" if src.color0_transparent else "BLEND"
-                mat["alphaCutoff"] = 0.5
         if m.alpha < 31:
             mat["alphaMode"] = "BLEND"
+        if mat.get("alphaMode") == "MASK":
+            mat["alphaCutoff"] = 0.5
         materials.append(mat)
-    # Double-sided needs its own material instance.
-    ds_material: dict[int, int] = {}
-
-    def material_for(mesh: MeshData) -> int | None:
-        if mesh.material >= len(materials):
-            return None
-        if not mesh.double_sided:
-            return mesh.material
-        if mesh.material not in ds_material:
-            copy = json.loads(json.dumps(materials[mesh.material]))
-            copy["doubleSided"] = True
-            copy["name"] += "_2s"
-            materials.append(copy)
-            ds_material[mesh.material] = len(materials) - 1
-        return ds_material[mesh.material]
+        material_index[key] = len(materials) - 1
+        return material_index[key]
 
     # -- skeleton -------------------------------------------------------------
     nodes: list[dict[str, Any]] = []
@@ -199,6 +226,7 @@ def export_glb(
         p = skeleton.parents[i]
         if p >= 0:
             nodes[p].setdefault("children", []).append(i)
+    bone_roots = [i for i in range(n_bones) if skeleton.parents[i] < 0]
     skin: dict[str, Any] | None = None
     if n_bones:
         ibm = np.array(
@@ -208,10 +236,15 @@ def export_glb(
             "joints": bone_nodes,
             "inverseBindMatrices": b.accessor(ibm.reshape(n_bones, 16)),
         }
+        if len(bone_roots) > 1:
+            nodes.append({"name": "skeleton", "children": bone_roots})
+            bone_roots = [len(nodes) - 1]
+            skin["skeleton"] = bone_roots[0]
 
     # -- meshes ---------------------------------------------------------------
     gl_meshes: list[dict[str, Any]] = []
     mesh_nodes: list[int] = []
+    written: list[tuple[MeshData, int]] = []
     for mesh in meshes:
         if mesh.vertex_count == 0 or mesh.face_count == 0:
             continue
@@ -224,12 +257,13 @@ def export_glb(
         }
         if skin is not None:
             k = mesh.joints.shape[1]
+            weights, joints = _normalized_weights(mesh.weights, mesh.joints)
             for set_index in range((k + 3) // 4):
                 j = np.zeros((mesh.vertex_count, 4), dtype=np.uint16)
                 w = np.zeros((mesh.vertex_count, 4), dtype=np.float32)
                 cols = min(4, k - 4 * set_index)
-                j[:, :cols] = mesh.joints[:, 4 * set_index : 4 * set_index + cols]
-                w[:, :cols] = mesh.weights[:, 4 * set_index : 4 * set_index + cols]
+                j[:, :cols] = joints[:, 4 * set_index : 4 * set_index + cols]
+                w[:, :cols] = weights[:, 4 * set_index : 4 * set_index + cols]
                 attrs[f"JOINTS_{set_index}"] = b.accessor(j, 34962)
                 attrs[f"WEIGHTS_{set_index}"] = b.accessor(w, 34962)
         # A mesh the game draws back-faces-only is wound the other way round.
@@ -252,20 +286,25 @@ def export_glb(
             node["skin"] = 0
         nodes.append(node)
         mesh_nodes.append(len(nodes) - 1)
+        written.append((mesh, len(nodes) - 1))
 
-    roots = [i for i in range(n_bones) if skeleton.parents[i] < 0] + mesh_nodes
+    roots = bone_roots + mesh_nodes
 
     # -- animations -----------------------------------------------------------
     animations: list[dict[str, Any]] = []
-    for bound, clip in motions or []:
-        if clip.frame_count <= 0:
+    shown: dict[int, tuple[set[int], set[int]]] = {}
+    switches = False
+    every_take = [Take.of_clip(bound, clip) for bound, clip in motions or []]
+    for take in every_take + list(takes or []):
+        count = len(take.poses)
+        if count <= 0:
             continue
-        times = np.arange(clip.frame_count, dtype=np.float32) / FRAME_RATE
+        times = np.arange(count, dtype=np.float32) / FRAME_RATE
         time_acc = b.accessor(times, minmax=True)
-        rot = np.zeros((clip.frame_count, n_bones, 4), dtype=np.float32)
-        trans = np.zeros((clip.frame_count, n_bones, 3), dtype=np.float32)
-        for k in range(clip.frame_count):
-            poses = bound.local_poses(clip.start + k, rest)
+        rot = np.zeros((count, n_bones, 4), dtype=np.float32)
+        trans = np.zeros((count, n_bones, 3), dtype=np.float32)
+        for k, posed in enumerate(take.poses):
+            poses = rest if posed is None else posed[0].local_poses(posed[1], rest)
             for i, p in enumerate(poses):
                 q = np.array(p.rotation, dtype=np.float64)
                 n = np.linalg.norm(q)
@@ -273,7 +312,7 @@ def export_glb(
                 trans[k, i] = p.translation
         # Keep quaternion continuity so importers interpolate the short way.
         for i in range(n_bones):
-            for k in range(1, clip.frame_count):
+            for k in range(1, count):
                 if np.dot(rot[k, i], rot[k - 1, i]) < 0:
                     rot[k, i] = -rot[k, i]
         channels = []
@@ -305,34 +344,81 @@ def export_glb(
                     "target": {"node": i, "path": "translation"},
                 }
             )
+        for mesh, node_index in written if take.masks is not None else []:
+            visible = np.zeros(count, dtype=np.uint8)
+            for k, mask in enumerate(take.masks or []):
+                if mask not in shown:
+                    shown[mask] = model.visibility_from_mask(mask)
+                groups, parts = shown[mask]
+                visible[k] = mesh.group in groups and mesh.part in parts
+            keys = [0] + [k for k in range(1, count) if visible[k] != visible[k - 1]]
+            # The node's own value is what the first take shows at its start.
+            nodes[node_index].setdefault("extensions", {}).setdefault(
+                "KHR_node_visibility", {"visible": bool(visible[0])}
+            )
+            samplers_a.append(
+                {
+                    "input": b.accessor(times[keys], minmax=True),
+                    "output": b.accessor(visible[keys]),
+                    "interpolation": "STEP",
+                }
+            )
+            pointer = f"/nodes/{node_index}/extensions/KHR_node_visibility/visible"
+            channels.append(
+                {
+                    "sampler": len(samplers_a) - 1,
+                    "target": {
+                        "path": "pointer",
+                        "extensions": {"KHR_animation_pointer": {"pointer": pointer}},
+                    },
+                }
+            )
+            switches = True
         animations.append(
-            {"name": clip.name, "channels": channels, "samplers": samplers_a}
+            {"name": take.name, "channels": channels, "samplers": samplers_a}
         )
 
+    scene: dict[str, Any] = {"name": model.name}
+    if roots:
+        scene["nodes"] = roots
+    extensions = ["KHR_materials_unlit"] if materials else []
+    if switches:
+        extensions += ["KHR_node_visibility", "KHR_animation_pointer"]
+    while len(b.buffer) % 4:
+        b.buffer.append(0)
     gltf: dict[str, Any] = {
         "asset": {"version": "2.0", "generator": "dbkai"},
         "scene": 0,
-        "scenes": [{"name": model.name, "nodes": roots}],
+        "scenes": [scene],
         "nodes": nodes,
         "meshes": gl_meshes,
         "materials": materials,
-        "buffers": [{"byteLength": 0}],
+        "images": images,
+        "textures": textures,
+        "samplers": samplers,
+        "skins": [skin] if skin is not None else [],
+        "animations": animations,
+        "buffers": [{"byteLength": len(b.buffer)}] if b.buffer else [],
         "bufferViews": b.views,
         "accessors": b.accessors,
-        "extensionsUsed": ["KHR_materials_unlit"],
+        "extensionsUsed": extensions,
     }
-    if images:
-        gltf["images"] = images
-        gltf["textures"] = textures
-        gltf["samplers"] = samplers
-    if skin is not None:
-        gltf["skins"] = [skin]
-    if animations:
-        gltf["animations"] = animations
-    while len(b.buffer) % 4:
-        b.buffer.append(0)
-    gltf["buffers"][0]["byteLength"] = len(b.buffer)
-    return _pack_glb(gltf, bytes(b.buffer))
+    # glTF forbids an empty array where it allows none at all.
+    return _pack_glb({k: v for k, v in gltf.items() if v != []}, bytes(b.buffer))
+
+
+def _normalized_weights(
+    weights: np.ndarray, joints: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Each vertex's weights scaled to sum to exactly one in float32, with
+    the remainder of the scaling put on its heaviest slot, and the joint of
+    a slot without weight set to 0."""
+    w = weights.astype(np.float64)
+    total = w.sum(axis=1, keepdims=True)
+    w = np.divide(w, total, out=w, where=total > 0).astype(np.float32)
+    rows = np.arange(len(w))
+    w[rows, w.argmax(axis=1)] += np.float32(1) - w.sum(axis=1, dtype=np.float32)
+    return w, np.where(w > 0, joints, 0)
 
 
 def clip_file_name(stem: str, clip: Clip) -> str:

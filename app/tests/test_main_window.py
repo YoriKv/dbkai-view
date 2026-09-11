@@ -114,6 +114,30 @@ def test_per_clip_export_writes_a_folder(qtbot, tmp_path, monkeypatch):
     assert "1 clip files" in window.statusBar().currentMessage()
 
 
+def test_action_export_writes_the_action(qtbot, tmp_path, monkeypatch):
+    from dbkai.formats import dsa
+    from tests.dsa_fixture import build_actions
+
+    window = _window(qtbot)
+    file = dsa.parse(build_actions(), "fixture.dsa")
+    window.session.add_action_set(file)
+    window.session.set_action((file, file.actions[1]))
+    suggested = []
+
+    def save(*args, **_kwargs):
+        suggested.append(args[2])
+        return str(tmp_path / "out.glb"), ""
+
+    monkeypatch.setattr("dbkai.ui.main_window.QFileDialog.getSaveFileName", save)
+    window.export_gltf_action()
+    assert suggested[0].endswith("fixture__fixture_2000.glb")
+    data = (tmp_path / "out.glb").read_bytes()
+    json_len = struct.unpack_from("<I", data, 12)[0]
+    doc = json.loads(data[20 : 20 + json_len])
+    assert [a["name"] for a in doc["animations"]] == ["fixture_2000"]
+    assert "KHR_node_visibility" in doc["extensionsUsed"]
+
+
 def test_actions_panel_lists_and_selects(qtbot):
     from dbkai.formats import dsa
     from tests.dsa_fixture import build_actions

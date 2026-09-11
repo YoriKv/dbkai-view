@@ -182,3 +182,112 @@ def test_glb_inverted_mesh_is_rewound(model):
     cape = names.index([n for n in names if n.startswith("capeShape")][0])
     assert indices(body)[:3] == [0, 1, 2]
     assert indices(cape)[:3] == [2, 1, 0]
+
+
+def _glb(data: bytes) -> tuple[dict, bytes]:
+    json_len = struct.unpack_from("<I", data, 12)[0]
+    return json.loads(data[20 : 20 + json_len]), data[20 + json_len + 8 :]
+
+
+def _accessor(doc: dict, binary: bytes, index: int, fmt: str) -> list[tuple]:
+    acc = doc["accessors"][index]
+    view = doc["bufferViews"][acc["bufferView"]]
+    at = view["byteOffset"] + acc.get("byteOffset", 0)
+    return list(
+        struct.iter_unpack(
+            f"<{fmt}", binary[at : at + acc["count"] * struct.calcsize(fmt)]
+        )
+    )
+
+
+def test_glb_weights_sum_to_one_and_unused_slots_point_at_joint_0(model):
+    # The game's fixed-point weights fall a little short of one, and a slot
+    # with no weight may still name a bone; the validator rejects both.
+    body = model.meshes[0]
+    body.joints = np.array([[1, 1]] * body.vertex_count, dtype=np.uint16)
+    body.weights = np.array([[0.9995, 0.0]] * body.vertex_count, dtype=np.float32)
+    doc, binary = _glb(export_glb(model, [body], []))
+    attrs = doc["meshes"][0]["primitives"][0]["attributes"]
+    assert _accessor(doc, binary, attrs["WEIGHTS_0"], "4f")[0] == (1.0, 0, 0, 0)
+    assert _accessor(doc, binary, attrs["JOINTS_0"], "4H")[0] == (1, 0, 0, 0)
+
+
+def test_glb_gives_several_root_bones_a_common_root(model):
+    from dataclasses import replace
+
+    from dbkai.model.skeleton import Skeleton
+
+    sk = model.skeleton
+    two = Skeleton(sk.names, sk.hashes, [-1, -1], sk.flags, sk.inverse_bind)
+    doc, _ = _glb(export_glb(replace(model, skeleton=two), None, []))
+    root = doc["nodes"][2]
+    assert root == {"name": "skeleton", "children": [0, 1]}
+    assert doc["skins"][0]["skeleton"] == 2
+    assert doc["scenes"][0]["nodes"][0] == 2 and 0 not in doc["scenes"][0]["nodes"]
+    # One root needs no such node.
+    assert "skeleton" not in _glb(export_glb(model, None, []))[0]["skins"][0]
+
+
+def test_glb_alpha_cutoff_only_with_mask_and_no_empty_arrays(model):
+    model.materials[0].alpha = 10
+    doc, _ = _glb(export_glb(model, None, []))
+    for mat in doc["materials"]:
+        assert mat["alphaMode"] == "BLEND" and "alphaCutoff" not in mat
+    # Nothing written means no materials, textures or images at all, rather
+    # than empty arrays, which glTF forbids.
+    doc, _ = _glb(export_glb(model, [], []))
+    assert not {"meshes", "materials", "images", "textures", "samplers"} & doc.keys()
+    assert "extensionsUsed" not in doc
+
+
+def test_action_take_follows_the_action(model):
+    from dbkai.formats import dsa
+    from dbkai.game import GameData
+    from dbkai.model.action import action_take
+    from dbkai.nds.rom import NdsRom
+    from tests.dsa_fixture import build_actions
+    from tests.test_game import build_rom
+
+    game = GameData(NdsRom(build_rom()))
+    file = dsa.parse(build_actions(), "100000_NORMAL_BALANCE.dsa")
+    idle = action_take(model.skeleton, file, file.actions[0], game.motion_set, 0)
+    assert idle.name == "100000_NORMAL_BALANCE_1000" and len(idle.poses) == 30
+    # Clip 0 (3 frames) from take frame 1, clamped at its end; from frame 10
+    # the action names clip 10, which the set lacks, so the pose holds.
+    assert [p[1] for p in idle.poses[:4]] == [0, 1, 2, 2]
+    assert idle.poses[29] == idle.poses[9]
+    assert set(idle.masks) == {0x8023033F}
+    # No motion command: the bind pose; the mask starts from the base.
+    blink = action_take(model.skeleton, file, file.actions[1], game.motion_set, 0)
+    assert blink.poses == [None] * 12
+    assert blink.masks[:2] == [0, 0] and blink.masks[2] == 0x804300FF
+
+
+def test_glb_writes_part_switches(model):
+    from dbkai.model.animation import Take
+
+    take = Take("blink", [None] * 4, [0, 0, 0xFFFFFFFF, 0xFFFFFFFF])
+    doc, binary = _glb(export_glb(model, None, [], takes=[take]))
+    assert {"KHR_node_visibility", "KHR_animation_pointer"} <= set(
+        doc["extensionsUsed"]
+    )
+    anim = doc["animations"][0]
+    assert anim["name"] == "blink"
+    switches = [c for c in anim["channels"] if c["target"]["path"] == "pointer"]
+    assert len(switches) == 2  # one per mesh
+    pointer = switches[0]["target"]["extensions"]["KHR_animation_pointer"]["pointer"]
+    node = int(pointer.split("/")[2])
+    assert pointer.endswith("/extensions/KHR_node_visibility/visible")
+    assert doc["nodes"][node]["extensions"]["KHR_node_visibility"] == {"visible": False}
+    sampler = anim["samplers"][switches[0]["sampler"]]
+    assert sampler["interpolation"] == "STEP"
+    times = doc["accessors"][sampler["input"]]
+    assert times["count"] == 2 and times["max"] == [pytest.approx(2 / 60)]
+    out = doc["accessors"][sampler["output"]]
+    view = doc["bufferViews"][out["bufferView"]]
+    assert binary[view["byteOffset"] : view["byteOffset"] + 2] == b"\x00\x01"
+    # Clips switch nothing and need neither extension.
+    assert (
+        "KHR_node_visibility"
+        not in _glb(export_glb(model, None, []))[0]["extensionsUsed"]
+    )

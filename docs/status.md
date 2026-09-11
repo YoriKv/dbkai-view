@@ -30,7 +30,8 @@ is in [`formats/`](formats/) and [`app/viewer.md`](app/viewer.md).
   the story packages; draws with the game's rules; poses from the body's
   motion set; plays actions with their clips and part switches.
 - Exports glTF 2.0 (`.glb`, unlit materials, skin, 60 fps samplers) as one
-  file, one per clip, or the whole ROM at once; textures as PNG.
+  file, one per clip, or the whole ROM at once; the chosen action as one
+  animation with its part switches; textures as PNG.
 - Headless: `python -m dbkai.cli list | extract | export`.
 
 ## Open
