@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.1.3 - unreleased
+
+- Fix shortcuts
+- Screenshots
+
 ## v0.1.2 - 2026-09-11
 
 - Export actions

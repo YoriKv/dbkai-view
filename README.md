@@ -6,6 +6,12 @@ models with their textures, parts and animations, and exports them to glTF 2.0.
 
 DBKai is built on Python + Qt (PySide6) and runs on Windows, macOS and Linux.
 
+<p align="center">
+  <a href="screenshots/screen_01.png"><img src="screenshots/screen_01.png" width="32%" alt="Goku's model in the viewport, with the asset browser and the Parts tab"></a>
+  <a href="screenshots/screen_02.png"><img src="screenshots/screen_02.png" width="32%" alt="Frieza posed by his motion set, with the Animation tab's clip list"></a>
+  <a href="screenshots/screen_03.png"><img src="screenshots/screen_03.png" width="32%" alt="Majin Buu in the dark theme, with the Materials tab and the File menu's exports"></a>
+</p>
+
 ## Features
 
 - **Asset browser** - every model in the ROM, including the ones embedded in
