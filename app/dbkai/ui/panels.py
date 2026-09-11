@@ -328,6 +328,7 @@ class MaterialsPanel(QWidget):
         layout.addWidget(QLabel("Materials"))
         layout.addWidget(self.materials, 1)
         self.palette.valueChanged.connect(self._palette_changed)
+        session.options_changed.connect(self._follow_palette)
         session.model_changed.connect(self.rebuild)
 
     def rebuild(self) -> None:
@@ -386,6 +387,14 @@ class MaterialsPanel(QWidget):
     def _palette_changed(self, value: int) -> None:
         self.session.set_option("palette", value)
         self.rebuild()
+
+    def _follow_palette(self) -> None:
+        """Show the palette an action's colour scheme chose."""
+        value = min(self.session.options.palette, self.palette.maximum())
+        if value != self.palette.value():
+            with QSignalBlocker(self.palette):
+                self.palette.setValue(value)
+            self.rebuild()
 
 
 # -- skeleton -----------------------------------------------------------------

@@ -182,3 +182,19 @@ def test_added_action_file_can_be_removed_but_not_the_models_own(qapp):
     assert [f.name for f in s.action_files] == own and s.action is None
     s.remove_action_file(own[0])
     assert [f.name for f in s.action_files] == own
+
+
+def test_action_colour_scheme_does_not_outlive_the_action(session):
+    file = dsa.parse(build_actions(), "fixture.dsa")
+    session.action_files = [file]
+    session.set_action((file, file.actions[0]))
+    session.set_action_frame(10)  # the colour command picks scheme 2 here
+    assert session.options.palette == 2
+    session.set_action(None)
+    assert session.options.palette == 0
+    session.set_option("palette", 1)
+    session.set_action((file, file.actions[0]))
+    session.set_action_frame(10)
+    assert session.options.palette == 2
+    session._set_model(session.model, None, None)  # another model: back to default
+    assert session.options.palette == 0 and session.action is None

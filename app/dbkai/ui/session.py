@@ -142,6 +142,8 @@ class Session(QObject):
         self.frame = 0
         self.action_files = []
         self.own_action_files: set[str] = set()
+        self._palette_before_action = 0
+        self.set_option("palette", 0)  # an action's colour scheme does not carry over
         self.action = None
         if self.game is not None and asset is not None:
             for a in self.game.action_files_for(asset):
@@ -315,6 +317,11 @@ class Session(QObject):
         action. ``None`` goes back to free clip scrubbing."""
         keep_playing = self.playing and choice is not None
         self.stop()
+        if self.action is not None:
+            # Leaving an action undoes the colour scheme it chose.
+            self.set_option("palette", self._palette_before_action)
+        if choice is not None and self.action is None:
+            self._palette_before_action = self.options.palette
         self.action = choice
         self.action_frame = 0
         self.actions_changed.emit()

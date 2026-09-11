@@ -7,6 +7,9 @@
   laid out like the Animation tab, with a source chooser and a list, and
   switching actions keeps playing; action files activated in the Assets
   dock join it and can be removed again
+- Fix: the colour scheme an action chose stuck to the palette after leaving
+  the action or opening another model; it now reverts, and the Materials
+  tab's palette spinner follows it
 - Fix: activating an action file in the Assets dock raised "not a DSE
   file"; it now joins the Actions tab of the loaded model
 - Fix: binding a motion that is not one of the model's own choices (opened

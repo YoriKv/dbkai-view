@@ -51,7 +51,8 @@ attack shows its fists and a damage reaction its damage face exactly when
 the game would. Switching actions while playing keeps playing, as switching
 clips does; a line names the clip, take frame and mask at the current
 frame. Scrubbing a clip in the Animation tab, or picking another motion
-source, drops the action again. A model opened from a file,
+source, drops the action again, and with it the colour scheme it chose;
+opening another model starts at palette 0. A model opened from a file,
 with no ROM to read the table from, shows everything.
 
 **Animation.** A character model automatically binds the motion set of its
