@@ -13,6 +13,8 @@ qmd update && qmd embed        # re-index after adding or editing docs
 
 ## Topic index
 
+- **[`status.md`](status.md)** — what is decoded, what the viewer shows, and
+  what is still open.
 - **[`development.md`](development.md)** — working in this checkout: the two
   venvs, WSL, PyCharm, the tests, lint and format, and cutting a release.
 - **[`app/`](app/)** — the viewer's design decisions:

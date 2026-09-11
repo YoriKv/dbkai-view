@@ -12,13 +12,15 @@ requires-python = ">=3.12"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
+    # Matrices for skinning and forward kinematics, on the headless side too.
     "numpy>=2.5.3",
+    # The viewport draws through OpenGL 3.3 core; PyOpenGL is BSD-licensed.
+    "pyopengl>=3.1.10",
     # The viewer's UI toolkit. Qt 6 via PySide6 for its LGPLv3 license, and it
     # ships wheels for Windows, macOS and Linux.
     #
     # Only `dbkai.ui` and `dbkai.app` may import it: the extractor side stays
     # Qt-free so it runs headless, in scripts and in tests.
-    "pyopengl>=3.1.10",
     "PySide6>=6.8",
 ]
 

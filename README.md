@@ -16,6 +16,9 @@ DBKai is built on Python + Qt (PySide6) and runs on Windows, macOS and Linux.
 - **Parts** - switch the faces, hands and costume pieces the game layers on one
   model.
 - **Animation** - pick a clip, then scrub through it or play it.
+- **Actions** - play the game's own moves: each action from the character's
+  action files runs its motion clips and switches parts (fists, damage face)
+  on the frames the game does.
 - **Materials & skeleton** - texture previews with palette choice, and the bone
   hierarchy.
 - **Export** - glTF 2.0 with skeleton, textures and animation clips: the current

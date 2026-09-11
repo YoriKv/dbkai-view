@@ -39,15 +39,20 @@ and the character's actions from its `.dsa` files. Choosing an action plays
 it: its motion command names the clips (of the body's motion set) and the
 take frames, its visibility and colour commands the masks, all driven by the
 action's own frame counter and transport, so an attack shows its fists and a
-damage reaction its damage face exactly when the game would. Scrubbing a
-clip in the Animation tab drops the action again. A model opened from a file, with no ROM to read
-the table from, shows everything.
+damage reaction its damage face exactly when the game would. The tab has
+its own slider and *Play* for the action's frames, a *Plays* column with the
+clip numbers each action uses, and a line naming the clip, take frame and
+mask at the current frame. Scrubbing a clip in the Animation tab, or picking
+another motion source, drops the action again. A model opened from a file,
+with no ROM to read the table from, shows everything.
 
 **Animation.** A character model automatically binds the motion set of its
 body type; a prop that carries its own frames plays those. The tab lists the
 clips; the slider scrubs, *Play* runs at the game's 60 frames per second
 times the speed. Any other motion file can be opened from disk and bound by
-bone name. Billboard bones (the `BL_` hair pieces) face the camera as they do
+bone name; a motion that is not one of the model's own choices (from disk,
+or the set an action binds) appears as an extra entry of the source list,
+tagged rather than backed by an asset. Billboard bones (the `BL_` hair pieces) face the camera as they do
 in the game.
 
 **Materials.** Textures with their decoded preview, and the palette spinner

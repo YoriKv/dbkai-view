@@ -55,6 +55,19 @@ def test_animation_panel_lists_clips(qtbot):
     assert panel.bones_label.text() == "2 of 2 matched"
 
 
+def test_animation_panel_survives_a_motion_outside_the_choices(qtbot):
+    # A motion bound from disk or by an action is not in the source list, so
+    # the panel adds an entry for it; rebuilding again must not choke on it.
+    window = _window(qtbot)
+    panel = window.animation
+    for name in ["spin", "spin", "other"]:
+        window.session.set_motion(Motion(dse.parse(build_motion(frames=3)), name))
+        assert panel.source.currentText() == name
+    assert panel.source.count() == 3  # bind pose, spin, other
+    panel.source.setCurrentIndex(0)
+    assert window.session.motion is None
+
+
 def test_view_toggles_reach_the_session(qtbot):
     window = _window(qtbot)
     view = window.menuBar().actions()[1].menu()

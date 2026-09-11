@@ -89,6 +89,34 @@ into the command area (props and effects of the ultimates). The shared
 NORMAL file's action 1000 plays `00010` for 29 frames from take frame 1,
 1100 plays `00000`, and 2000 chains `01021`, `01022` and `01023`.
 
+## Where the game reads them
+
+Addresses in the ARM9 binary, named as `dsd` names them
+([tools/ds-decomp.md](../tools/ds-decomp.md)):
+
+| Function | Role |
+|---|---|
+| `0x02075d2c`, `0x02075e04` | load a file: resolve the record offsets, the resources and the motion sets |
+| `0x020a3ca0` | find a clip in a motion set by its `%05d` number (`0x020dc374` holds the format) |
+| `0x02076a08` | command dispatcher; case 17 is the motion command |
+| `0x02079960` | walk the motion segments for a frame; `0x02079a4c` when the hit index at `0x18` is set |
+| `0x020753d8`, `0x02075328`, `0x020751dc` | start a clip on the character |
+| `0x0207cbb8` | visibility (`0x12`) and colour scheme (`0x13`) |
+| `0x020b1378` | evaluate a track at a frame |
+| `0x02078530` | link (`0x03`) branching |
+| `0x02008b34`, `0x02008974` | sound (`0x09`) |
+| `0x020dafd8` | method table of the objects op `0x01` spawns |
+
+## Not read yet
+
+- Ops `0x01` (spawn an external object with its own motion), `0x04` and
+  `0x14` (hit boxes), and the rest of the opcode range.
+- The 12-byte entries counted at header `0x0E`.
+- The per-frame 48-byte records a motion command's u32 at `0x10` points at
+  (root motion, used with the command's flag bit 3), and the s16 flag of a
+  segment.
+- Resource flags.
+
 ## Visibility presets
 
 `archiveDBK.dsa` entry 64419 (`/gamedata/parameter`, a `PRM` table with

@@ -29,9 +29,12 @@ from PySide6.QtWidgets import (
 )
 
 from dbkai.formats import dsa
+from dbkai.game import Asset
 from dbkai.model.animation import Motion
 from dbkai.ui.session import Session
 
+#: Item data of a motion source that is not an asset of the ROM.
+_LOADED = "loaded"
 _ROLE = Qt.ItemDataRole.UserRole
 
 
@@ -220,19 +223,15 @@ class AnimationPanel(QWidget):
     def rebuild_clips(self) -> None:
         motion = self.session.motion
         with QSignalBlocker(self.source):
+            # Entry 0 is the bind pose; a motion that is not one of the
+            # model's choices (opened from disk, or bound by an action) gets
+            # an entry of its own, tagged _LOADED rather than an asset.
             index = 0
-            for i in range(self.source.count()):
-                asset = self.source.itemData(i)
-                if (
-                    motion is not None
-                    and asset is not None
-                    and asset.name == motion.name
-                ):
-                    index = i
-            if motion is not None and index == 0:
-                if self.source.findText(motion.name) < 0:
-                    self.source.addItem(motion.name, "loaded")
+            if motion is not None:
                 index = self.source.findText(motion.name)
+                if index < 0:
+                    self.source.addItem(motion.name, _LOADED)
+                    index = self.source.count() - 1
             self.source.setCurrentIndex(index)
         with QSignalBlocker(self.clips):
             self.clips.clear()
@@ -273,9 +272,7 @@ class AnimationPanel(QWidget):
         asset = self.source.itemData(index)
         if asset is None:
             self.session.set_motion(None)
-        elif asset == "loaded":
-            return
-        elif self.session.game is not None:
+        elif isinstance(asset, Asset) and self.session.game is not None:
             self.session.set_motion(self.session.game.load_motion(asset))
 
     def _browse(self) -> None:
