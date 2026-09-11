@@ -104,7 +104,8 @@ def test_dse_model_parses():
     ]
     assert body.display_lists[0].vertices()[1].position == (1.0, 0.0, 0.0)
     assert body.display_lists[1].vertices()[0].color == (31, 0, 0)
-    assert cape.group == 1 and cape.shift == 1 and cape.alpha == 31
+    assert cape.group == 1 and cape.shift == 1 and cape.alpha == 0
+    assert cape.back_faces_only and not cape.double_sided
     sk = cape.display_lists[0]
     assert sk.is_skinned and sk.bones == (0, 1)
     v = sk.skinned_vertices()

@@ -213,9 +213,16 @@ class Session(QObject):
     def set_clip_frame(self, index: int) -> None:
         self.set_frame(index + (self.clip.start if self.clip else 0))
 
-    def play(self) -> None:
+    def play(self, from_start: bool = False) -> None:
+        """Run the clip, or the action when one is chosen; ``from_start``
+        rewinds it to its first frame first."""
         if (self.clip is None and self.action is None) or self._timer.isActive():
             return
+        if from_start:
+            if self.action is not None:
+                self.set_action_frame(0)
+            elif self.clip is not None:
+                self.set_frame(self.clip.start)
         self._accumulator = 0.0
         self._timer.start()
         self.playing_changed.emit(True)
@@ -403,9 +410,7 @@ class Session(QObject):
         """The (groups, parts) of the game's rest preset, or everything when
         no ROM is open to read the preset table from."""
         mask = self.game.rest_mask() if self.game is not None else None
-        if mask is None:
-            return model.everything()
-        return model.visibility_from_mask(mask)
+        return model.rest_visibility(mask)
 
     def reset_visibility(self) -> None:
         if self.model is not None:

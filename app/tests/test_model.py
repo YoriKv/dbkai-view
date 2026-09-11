@@ -142,3 +142,43 @@ def test_export_clips_writes_one_file_each(model, tmp_path):
     json_len = struct.unpack_from("<I", data, 12)[0]
     doc = json.loads(data[20 : 20 + json_len])
     assert [a["name"] for a in doc["animations"]] == ["000_spin"]
+
+
+def test_alpha_and_culling_follow_the_game(model):
+    # The cape's material-select chunk says alpha 0, which the game never
+    # reads: the material record's alpha (31) is what it draws with. Its
+    # mesh flag 0x10 culls front faces, so the mesh is marked inverted.
+    cape = [m for m in model.meshes if m.name.startswith("capeShape")][0]
+    assert cape.alpha == 31 and cape.inverted and not cape.double_sided
+    body = [m for m in model.meshes if m.name.startswith("bodyShape")][0]
+    assert not body.inverted
+
+
+def test_rest_visibility_falls_back_when_the_preset_hides_all(model):
+    # A character preset with no bit for group 1 or part 0 hides the whole
+    # fixture, so the model shows everything; a mask that hits shows it.
+    assert model.rest_visibility(None) == model.everything()
+    assert model.rest_visibility(1 << 5 | 1 << (16 + 9)) == model.everything()
+    assert model.rest_visibility(1 << 1 | 1 << 16) == ({1}, {0})
+
+
+def test_glb_inverted_mesh_is_rewound(model):
+    # glTF has no "cull front", so the cape (drawn back-faces-only by the
+    # game) is written with its triangles reversed; the body keeps its order.
+    glb = export_glb(model, None, [])
+    json_len = struct.unpack_from("<I", glb, 12)[0]
+    doc = json.loads(glb[20 : 20 + json_len])
+    bin_start = 20 + json_len + 8
+
+    def indices(mesh_index: int) -> list[int]:
+        prim = doc["meshes"][mesh_index]["primitives"][0]
+        acc = doc["accessors"][prim["indices"]]
+        view = doc["bufferViews"][acc["bufferView"]]
+        at = bin_start + view["byteOffset"] + acc.get("byteOffset", 0)
+        return list(struct.unpack_from(f"<{acc['count']}I", glb, at))
+
+    names = [m["name"] for m in doc["meshes"]]
+    body = names.index([n for n in names if n.startswith("bodyShape")][0])
+    cape = names.index([n for n in names if n.startswith("capeShape")][0])
+    assert indices(body)[:3] == [0, 1, 2]
+    assert indices(cape)[:3] == [2, 1, 0]

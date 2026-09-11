@@ -58,6 +58,8 @@ class MeshData:
     alpha: int
     shift: int
     sub: int = 0
+    #: The game culls front faces for this mesh: its winding is reversed.
+    inverted: bool = False
     uid: int = 0
 
     @property
@@ -145,6 +147,18 @@ class Model:
     def visible_meshes(self, groups: set[int], parts: set[int]) -> list[MeshData]:
         return [m for m in self.meshes if m.group in groups and m.part in parts]
 
+    def rest_visibility(self, mask: int | None) -> tuple[set[int], set[int]]:
+        """What to show at rest: the game's character preset ``mask`` when
+        it applies to this model, everything otherwise. The preset names a
+        character's groups and parts; an accessory or prop keeps its own
+        groups (a cap is group 1, a hand 12) and the game draws it under the
+        mask of the object that carries it, which is not read yet."""
+        if mask is not None:
+            groups, parts = self.visibility_from_mask(mask)
+            if any(m.vertex_count for m in self.visible_meshes(groups, parts)):
+                return groups, parts
+        return self.everything()
+
 
 def build(file: dse.DseFile, name: str = "") -> Model:
     """Turn a parsed model file into a :class:`Model`."""
@@ -207,7 +221,9 @@ def _build_mesh(
     part = material.part if material else 0
     default_color = np.array([c / 31 for c in mesh.color], dtype=np.float32)
     factor = float(1 << mesh.shift)
-    alpha = lists[0].alpha if lists else mesh.alpha
+    # The game takes the alpha from the material record; the alpha field of
+    # the material-select chunk is never read.
+    alpha = material.alpha if material else mesh.alpha
     positions: list[np.ndarray] = []
     uvs: list[np.ndarray] = []
     colors: list[np.ndarray] = []
@@ -304,6 +320,7 @@ def _build_mesh(
         fog=bool(mesh.flags & 0x20),
         alpha=alpha,
         shift=mesh.shift,
+        inverted=mesh.back_faces_only,
     )
 
 

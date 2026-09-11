@@ -123,7 +123,7 @@ def build_model() -> bytes:
         raw += struct.pack("<2h", int(uv[0] * 16), int(uv[1] * 16))
         raw += struct.pack("<3h", *(fixed(v) for v in pos))
         raw += struct.pack("<2H", int(w[0] * 4096), int(w[1] * 4096))
-    chunk1 = struct.pack("<BBHI", 2, 0, (31 << 10) | 0, 8)
+    chunk1 = struct.pack("<BBHI", 2, 0, (0 << 10) | 0, 8)  # alpha field unused
     chunk1 += (
         struct.pack("<HHIHHI2H", 3, 0, 32 + len(raw), 3, 0x190E, 10, 0, 1)
         + bytes(12)
@@ -139,7 +139,7 @@ def build_model() -> bytes:
 
     table_a = struct.pack("<4I", mesh_a, off0, 0x61, rgb555(31, 30, 30))
     table_a += struct.pack(
-        "<4I", mesh_b, off1, 0x60 | (1 << 24), rgb555(31, 31, 31) | (1 << 16)
+        "<4I", mesh_b, off1, 0x70 | (1 << 24), rgb555(31, 31, 31) | (1 << 16)
     )
     table_b = struct.pack("<4I", mesh_a, 1, 0, 0) + struct.pack("<4I", mesh_b, 0, 1, 0)
     material = struct.pack("<IHBBH", mat, 0x020F, 31, 0, rgb555(25, 25, 25)) + bytes(6)

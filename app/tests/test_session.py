@@ -75,6 +75,8 @@ def test_playback_steps_and_loops(session):
     session._tick()
     session._tick()
     assert session.frame == 2 and not session.playing
+    session.play(from_start=True)
+    assert session.frame == 0 and session.playing
 
 
 def test_options_emit_only_on_change(session):

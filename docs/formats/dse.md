@@ -90,9 +90,22 @@ Mesh table A (16 bytes per mesh, at `R(1)`):
 | `0x08` | flags in the low 24 bits, **group** in the top byte |
 | `0x0C` | colour: RGB555 in the low 16 bits, **shift** in bits 16-23 |
 
-Flags: bit 0 = the lists carry `COLOR` commands; bit 3 = double-sided;
-bit 4 = inverted culling; bit 5 = fog applies; bit 6 = always set; bit 8 =
-run a `BOX_TEST` (parameters in the 12 bytes before the chunk) before drawing.
+Flags: bit 0 = the lists carry `COLOR` commands; bit 2 = drawn twice, back
+faces then front; bit 3 = cull mode none (both faces); bit 4 = front faces
+culled instead of back, so the mesh is wound the other way (the inner side
+of the Super Saiyan hair pieces); bit 5 = fog applies; bit 6 = always set;
+bit 8 = run a `BOX_TEST` (parameters in the 12 bytes before the chunk)
+before drawing.
+
+The draw routine (`0x01ffb494`, per chunk, and `0x01ffb2f0`, which writes
+`POLYGON_ATTR`) composes the attribute from these flags, the **alpha byte
+of the material record** (`0x06` below, never the chunk's field), the
+polygon id (the caller's base plus the mesh's group, capped at 63; a
+separate id when the alpha is below 31) and the fog bit. Across the ROM 388
+lists say alpha 0 in their chunk while their material says 31 (the cap
+`200205_cap6`), and 83 say 31 while the material is translucent (the
+scouter glass `toumei`, car windows, the death ball): the material is what
+the game shows.
 
 The **group** is a 0-15 slot the game switches with a 16-bit mask: 0 is the
 body, 1 the head, 2-5 hair, arms and legs, 6-13 hand poses (`gu` fist, `pa`
@@ -110,11 +123,13 @@ order: `name`, `bone index`, `index into table A`, 0.
 A mesh's data is a run of chunks, each `u8 type, u8 flags, u16 value, u32
 length` (length includes the header):
 
-- **type 2**, length 8: selects a material: `value` is `alpha << 10 |
-  material index`. A mesh begins with one and may contain more — Piccolo's
-  knee mesh draws the ankle skin, then switches to the trouser material for
-  the rest of the leg. `flags` bit 0 is set on a few meshes (meaning
-  unknown).
+- **type 2**, length 8: selects a material: the low byte of `value` is the
+  material index (the draw routine reads only that byte; the `alpha << 10`
+  the tool wrote above it is never used, and is 0 on 388 lists whose
+  material is opaque). A mesh begins with one and may contain more —
+  Piccolo's knee mesh draws the ankle skin, then switches to the trouser
+  material for the rest of the leg. `flags` bit 0 is set on a few meshes
+  (meaning unknown).
 - **type 3** (triangles) and **type 4** (quads): a display list. The 32-byte
   header continues `u16 vertex count, u16 layout, u32 weights offset, u16
   bones[…]`; the vertex data follows to `length`. `layout`'s low byte is the
@@ -145,16 +160,31 @@ Quads are stored as such and triangulated by the reader.
 |---|---|---|
 | `0x00` | 4 | name |
 | `0x04` | 2 | bit 0 = textured; bits 2-3 = repeat S, T; bits 8-9 = flip S, T (flip implies repeat); bit 7 set in RAM to hide |
-| `0x06` | 1 | alpha, 0-31 |
+| `0x06` | 1 | alpha, 0-31: what the draw routine puts in `POLYGON_ATTR` (31 opaque; below 31 the mesh is drawn translucent with the translucent polygon id) |
 | `0x07` | 1 | **part** id, 0-15 |
 | `0x08` | 2 | diffuse RGB555 |
 | `0x0A` | 4 | 0 |
 | `0x0E` | 2 | `0x1CE7` |
 | `0x10` | 1 | texture index, `0xFD` for none |
 | `0x11` | 1 | `0xFD` |
-| `0x12` | 2 | two `s8`, texture animation parameters |
-| `0x14` | 4 | frame count of a U scroll animation (1 = none) |
-| `0x18` | 4 | the same for V |
+| `0x12` | 2 | two `s8`: direction of the S and T texture scroll (negative runs backwards) |
+| `0x14` | 4 | period in frames of the S scroll (1 = none) |
+| `0x18` | 4 | period of the T scroll |
+| `0x1C` | 4 | phase of the S scroll, `0x20` of the T scroll |
+
+The texture setup (`0x01ffad78`) writes `TEXIMAGE_PARAM` from the texture's
+size, format and colour-0 bit, the material's repeat and flip bits (flip
+OR-ed into repeat, as the hardware needs), and the texture matrix from the
+scroll: with a period above 1, the texture offset is `((time + phase) mod
+period) / period` of the texture size, in the direction given, so the sky
+of the Kinto'un stage and the fast backgrounds of the arenas move. 165
+materials scroll; the viewer and the export do not animate them yet.
+
+The palette a material draws with is chosen by the draw state's colour
+scheme, but not as palette *n* of the texture directly: the routine counts
+the schemes flagged in a per-model word below the wanted one and takes that
+many palettes in. Where that word is filled has not been read; the viewer
+takes palette *n*.
 | `0x1C` | 8 | animation data pointers (0 in the file) |
 
 The **part** is the second 16-bit visibility mask: 0 always, 1-4 the faces

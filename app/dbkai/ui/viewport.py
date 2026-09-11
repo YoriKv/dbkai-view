@@ -477,7 +477,7 @@ class Viewport(QOpenGLWidget):
         GL.glUniform1f(self._uniforms["u_alpha"], mesh.alpha / 31)
         if opts.culling and not mesh.double_sided and not opts.wireframe:
             GL.glEnable(GL.GL_CULL_FACE)
-            GL.glCullFace(GL.GL_BACK)
+            GL.glCullFace(GL.GL_FRONT if mesh.inverted else GL.GL_BACK)
             GL.glFrontFace(GL.GL_CCW)
         else:
             GL.glDisable(GL.GL_CULL_FACE)

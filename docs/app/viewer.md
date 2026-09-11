@@ -34,7 +34,11 @@ free.
 *part* bit are both set in a 32-bit mask ([formats/dsa.md](../formats/dsa.md)).
 The Parts tab exposes both masks as checkboxes plus a per-batch override;
 *Rest* restores the game's rest preset (state 10005 of its parameter table:
-neutral face, open hands). The **Actions** tab lists that table's presets
+neutral face, open hands). That preset names a character's groups and
+parts; when it would hide every mesh of a model — an accessory such as a
+cap, a mask or a hand model keeps its own group numbers and the game draws
+it under the mask of the character wearing it — the model shows everything
+instead. The **Actions** tab lists that table's presets
 and the character's actions from its `.dsa` files. Choosing an action plays
 it: its motion command names the clips (of the body's motion set) and the
 take frames, its visibility and colour commands the masks, all driven by the
@@ -48,9 +52,9 @@ with no ROM to read the table from, shows everything.
 
 **Animation.** A character model automatically binds the motion set of its
 body type; a prop that carries its own frames plays those. The tab lists the
-clips; the slider scrubs, *Play* runs at the game's 60 frames per second
-times the speed. Any other motion file can be opened from disk and bound by
-bone name; a motion that is not one of the model's own choices (from disk,
+clips; the slider scrubs, *Play* runs the clip from its first frame at the
+game's 60 frames per second times the speed. Any other motion file can be
+opened from disk and bound by bone name; a motion that is not one of the model's own choices (from disk,
 or the set an action binds) appears as an extra entry of the source list,
 tagged rather than backed by an asset. Billboard bones (the `BL_` hair pieces) face the camera as they do
 in the game.

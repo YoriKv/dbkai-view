@@ -35,10 +35,18 @@ is in [`formats/`](formats/) and [`app/viewer.md`](app/viewer.md).
 
 ## Open
 
+- Which mask the game draws an accessory or prop model under (the
+  `gamedata/accessory` table is not read); the viewer shows all of such a
+  model.
 - Action ops `0x01`, `0x04`, `0x14` and the rest, the 12-byte header
   entries, root-motion records and resource flags
   ([formats/dsa.md](formats/dsa.md#not-read-yet)).
-- `DSE` kind bit `0x20`, and material chunk flag bit 0.
+- `DSE` kind bit `0x20`, material chunk flag bit 0, and the draw-state byte
+  that forces alpha 0 (a wireframe debug mode, most likely).
+- Texture scroll animation (165 materials, stage skies and backgrounds) is
+  decoded but not played.
+- The colour-scheme-to-palette mapping counts a per-model word of available
+  schemes; the viewer takes palette *n* for scheme *n*.
 - The 121 stage texture sets in `st/` decode, but where the stage geometry
   lives has not been located.
 - Effects the ultimates spawn (embedded resources) are not played with the

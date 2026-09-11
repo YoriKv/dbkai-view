@@ -194,7 +194,15 @@ class Mesh:
 
     @property
     def double_sided(self) -> bool:
-        return bool(self.flags & 0x08)
+        """Drawn with both faces: flag ``0x08`` sets the DS cull mode to
+        none, flag ``0x04`` draws the list twice, back faces then front."""
+        return bool(self.flags & 0x0C)
+
+    @property
+    def back_faces_only(self) -> bool:
+        """Flag ``0x10``: the game culls the front faces instead of the back,
+        so the mesh's winding is reversed (the inner side of hair pieces)."""
+        return bool(self.flags & 0x10) and not self.double_sided
 
     @property
     def fog(self) -> bool:

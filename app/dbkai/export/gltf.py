@@ -232,9 +232,11 @@ def export_glb(
                 w[:, :cols] = mesh.weights[:, 4 * set_index : 4 * set_index + cols]
                 attrs[f"JOINTS_{set_index}"] = b.accessor(j, 34962)
                 attrs[f"WEIGHTS_{set_index}"] = b.accessor(w, 34962)
+        # A mesh the game draws back-faces-only is wound the other way round.
+        indices = mesh.indices[:, ::-1] if mesh.inverted else mesh.indices
         prim: dict[str, Any] = {
             "attributes": attrs,
-            "indices": b.accessor(mesh.indices.astype(np.uint32).reshape(-1), 34963),
+            "indices": b.accessor(indices.astype(np.uint32).reshape(-1), 34963),
             "mode": 4,
         }
         mat = material_for(mesh)

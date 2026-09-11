@@ -132,10 +132,7 @@ def cmd_export(args: argparse.Namespace) -> int:
             motions.append((bound, c))
     visible = None
     if not args.all_parts:
-        mask = game.rest_mask()
-        groups, parts = (
-            model.visibility_from_mask(mask) if mask is not None else model.everything()
-        )
+        groups, parts = model.rest_visibility(game.rest_mask())
         visible = model.visible_meshes(groups, parts)
     count = len(visible if visible is not None else model.meshes)
     if args.per_clip:

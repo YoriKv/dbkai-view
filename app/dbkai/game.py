@@ -114,6 +114,10 @@ class GameData:
             kind = _kind_from_name(f.name)
             if kind is AssetKind.OTHER:
                 continue
+            if kind is AssetKind.MODEL:
+                # The loose files are few; a look inside tells a motion named
+                # like a model (debug/goku/262_goku_nyoibou.dse) apart.
+                kind = self._kind_from_content(f, kind)
             yield Asset(str(f.path), kind, f.size, rom_file=f)
         if self.archive:
             for e in self.archive.entries:
@@ -130,6 +134,13 @@ class GameData:
         for f in self.rom.files:
             if f.name.lower().endswith(".dsdz"):
                 yield from self._embedded(f)
+
+    def _kind_from_content(self, f: RomFile, fallback: AssetKind) -> AssetKind:
+        try:
+            data = unwrap(self.rom.read(f))
+            return classify(dse.parse(data)) if dse.is_dse(data) else fallback
+        except Exception:  # noqa: BLE001 - keep the name's guess for a bad file
+            return fallback
 
     def _embedded(self, f: RomFile) -> Iterator[Asset]:
         """The DSE files inside a story package, found by their magic."""

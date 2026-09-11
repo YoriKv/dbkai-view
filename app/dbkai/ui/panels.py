@@ -289,7 +289,7 @@ class AnimationPanel(QWidget):
 
     def _play_toggled(self, on: bool) -> None:
         if on:
-            self.session.play()
+            self.session.play(from_start=True)
         else:
             self.session.stop()
 

@@ -7,6 +7,15 @@
 - Fix: binding a motion that is not one of the model's own choices (opened
   from disk, or by an action) crashed the Animation tab on the next change
 - Windows: `uv sync` after pulling; numpy and PyOpenGL are new dependencies
+- Fix: mesh alpha comes from the material record as the game reads it, not
+  from the material-select chunk, so the cap, the scouter glass and other
+  accessories draw with the right opacity instead of vanishing
+- Fix: mesh flag `0x10` culls front faces (the inside of hair pieces) and
+  flag `0x04` draws both sides; glTF export rewinds the former
+- Fix: motion files named like models (`debug/goku/262_goku_nyoibou.dse`)
+  are listed as motions
+- A model the character preset would hide entirely (accessories, props)
+  shows everything at rest
 
 ## v0.1.1 - 2026-09-10
 

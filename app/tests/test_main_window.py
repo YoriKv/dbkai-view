@@ -52,6 +52,10 @@ def test_animation_panel_lists_clips(qtbot):
     assert window.session.playing
     panel.play.setChecked(False)
     assert not window.session.playing
+    panel.slider.setValue(2)
+    panel.play.setChecked(True)  # Play restarts from the first frame
+    assert window.session.frame == 0 and panel.frame_label.text() == "1 / 3"
+    panel.play.setChecked(False)
     assert panel.bones_label.text() == "2 of 2 matched"
 
 
