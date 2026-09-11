@@ -1,0 +1,54 @@
+# Build output
+build/
+dist/
+*.spec
+
+# Game data. Never commit it: users supply their own dump, and everything the
+# extractor derives from it is copyrighted and fully regenerable.
+reference/
+extracted/
+*.3ds
+*.cia
+*.cxi
+
+# Scratch space for one-off scripts and diagnostics
+tmp/
+
+# --- Python / uv ---
+# One venv per OS, side by side:
+#   .venv        -> Windows (default name, so PyCharm auto-detects it)
+#   .venv-linux  -> WSL/Linux (selected via UV_PROJECT_ENVIRONMENT=.venv-linux)
+# Never commit either -- recreate with `uv sync`. (uv.lock IS committed.)
+.venv/
+.venv-linux/
+venv/
+.uv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+
+# direnv's local state, not the checked-in .envrc
+.direnv/
+
+# --- Qt ---
+# Generated resource/UI modules, if we ever use pyside6-rcc / pyside6-uic.
+*_rc.py
+ui_*.py
+
+# Editor / OS. `.idea/` is ignored as a whole, except the files that make a
+# fresh clone open correctly in PyCharm: the module, its source roots and the
+# interpreter it names. Machine-local state (workspace.xml, shelf/) stays out.
+.idea/*
+!.idea/dbkai.iml
+!.idea/modules.xml
+!.idea/misc.xml
+!.idea/vcs.xml
+!.idea/encodings.xml
+!.idea/inspectionProfiles/
+!.idea/.gitignore
+.vscode/
+.DS_Store

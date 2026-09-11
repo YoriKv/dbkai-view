@@ -1,0 +1,23 @@
+# Enforce LF everywhere. This repository is edited from both Windows and WSL;
+# without this, Windows tooling can rewrite files to CRLF and produce noisy,
+# cross-platform diffs.
+* text=auto eol=lf
+
+# Game data and anything extracted from it is byte-exact input to the
+# extractor. `text=auto` would normally detect these as binary anyway, but a
+# mis-detection would silently corrupt a fixture, so mark them explicitly.
+*.3ds  -text
+*.cia  -text
+*.cxi  -text
+*.bin  -text
+*.bch  -text
+*.cgfx -text
+*.arc  -text
+
+# App assets.
+*.png  -text
+*.ico  -text
+*.icns -text
+
+# Lockfile is managed by uv; keep it as-is.
+uv.lock linguist-generated=true
