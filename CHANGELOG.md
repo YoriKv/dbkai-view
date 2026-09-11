@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.3 - unreleased
+## v0.1.3 - 2026-09-11
 
 - Fix shortcuts
 - Screenshots
