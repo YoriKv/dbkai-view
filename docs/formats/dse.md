@@ -185,7 +185,6 @@ scheme, but not as palette *n* of the texture directly: the routine counts
 the schemes flagged in a per-model word below the wanted one and takes that
 many palettes in. Where that word is filled has not been read; the viewer
 takes palette *n*.
-| `0x1C` | 8 | animation data pointers (0 in the file) |
 
 The **part** is the second 16-bit visibility mask: 0 always, 1-4 the faces
 (`F_01_nomal`, `F_02_damage`, `F_03_kusen`, `F_04_fun`), 5-8 the mouths
