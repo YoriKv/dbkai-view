@@ -17,7 +17,7 @@ is testable and reusable headless.
   frozen release build.
 """
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 
 # The name shown to a person: window titles, dialogs, the About box, and
 # QApplication.applicationDisplayName.

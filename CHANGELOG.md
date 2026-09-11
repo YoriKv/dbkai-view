@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.4 - unreleased
+## v0.1.4 - 2026-09-11
 
 - Cleanup, fixes, and minor ux improvements
 
